@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../widgets/loading_dialog.dart';
 import 'sign_up_screen.dart';
 import 'main_navigation.dart';
 import 'package:berkah_presensi/network/apiClient.dart';
@@ -47,6 +48,7 @@ class _SignInScreenState extends State<SignInScreen> {
   }
 
   void _handleSignIn() async {
+<<<<<<< HEAD
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
@@ -89,6 +91,35 @@ class _SignInScreenState extends State<SignInScreen> {
     } finally {
       setState(() => _isLoading = false);
     }
+=======
+    LoadingDialog.show(context);
+
+    // TODO: ganti dengan pemanggilan API sign-in sesungguhnya.
+    final bool berhasil = await _signInKeServer(
+      _usernameCtrl.text,
+      _passwordCtrl.text,
+    );
+
+    if (!context.mounted) return;
+    LoadingDialog.hide(context);
+
+    if (berhasil) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MainNavigation()),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Username atau password salah')),
+      );
+    }
+  }
+
+  /// Simulasi pemanggilan API — selalu sukses setelah delay 1.5 detik.
+  /// Ganti isi fungsi ini dengan http/dio call ke backend sesungguhnya.
+  Future<bool> _signInKeServer(String username, String password) async {
+    await Future.delayed(const Duration(milliseconds: 1500));
+    return true;
+>>>>>>> 6edb275eb9110ab49e5941429b0b93b84cbc5aef
   }
 
   @override
@@ -103,22 +134,17 @@ class _SignInScreenState extends State<SignInScreen> {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.only(top: 24, bottom: 40),
-                decoration: const BoxDecoration(
-                  gradient: AppColors.primaryGradient,
-                ),
+                decoration: const BoxDecoration(gradient: AppColors.primaryGradient),
                 child: Column(
                   children: [
-                    Image.asset(
-                      'assets/images/berkahglobal.png',
-                      width: 160,
-                      height: 160,
-                      fit: BoxFit.contain,
+                    const Text(
+                      'PT. Berkah Gobal Business',
+                      style: AppTextStyles.headerSubtitle,
                     ),
                     const SizedBox(height: 20),
-                    const Text(
-                      'Sign In',
-                      style: AppTextStyles.headerTitle,
-                    ),
+                    _BerkahLogo(size: 150),
+                    const SizedBox(height: 20),
+                    const Text('Sign In', style: AppTextStyles.headerTitle),
                   ],
                 ),
               ),
@@ -242,41 +268,18 @@ class _SignInScreenState extends State<SignInScreen> {
   }
 }
 
-/// Placeholder logo lingkaran "BERKAH" — ganti dengan Image.asset jika file
-/// logo resmi sudah tersedia di assets/images/logo.png
+/// Logo resmi "Berkah Global Business" dari assets/images/logo.png.
 class _BerkahLogo extends StatelessWidget {
   final double size;
   const _BerkahLogo({required this.size});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return Image.asset(
+      'assets/images/logo.png',
       width: size,
       height: size,
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        color: Colors.white24,
-      ),
-      alignment: Alignment.center,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: const [
-          Icon(Icons.public, color: Colors.white, size: 40),
-          SizedBox(height: 4),
-          Text(
-            'BERKAH',
-            style: TextStyle(
-              color: Colors.yellow,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
-          ),
-          Text(
-            'GLOBAL BUSINESS',
-            style: TextStyle(color: Colors.white, fontSize: 8),
-          ),
-        ],
-      ),
+      fit: BoxFit.contain,
     );
   }
 }
