@@ -64,17 +64,25 @@ class _SignInScreenState extends State<SignInScreen> {
 
       if (!mounted) return;
 
-      StatusDialog.show(
-        context,
-        title: 'Berhasil',
-        message: 'Selamat datang kembali!',
-        isSuccess: true,
-        onConfirm: () {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const MainNavigation()),
-          );
-        },
+      LoadingDialog.show(context);
+
+      final bool berhasil = await _signInKeServer(
+        _usernameCtrl.text,
+        _passwordCtrl.text,
       );
+
+      if (!context.mounted) return;
+      LoadingDialog.hide(context);
+
+      if (berhasil) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const MainNavigation()),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Username atau password salah')),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
 
@@ -90,25 +98,7 @@ class _SignInScreenState extends State<SignInScreen> {
     } finally {
       setState(() => _isLoading = false);
     }
-    LoadingDialog.show(context);
-
-    final bool berhasil = await _signInKeServer(
-      _usernameCtrl.text,
-      _passwordCtrl.text,
-    );
-
-    if (!context.mounted) return;
-    LoadingDialog.hide(context);
-
-    if (berhasil) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainNavigation()),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Username atau password salah')),
-      );
-    }
+    
   }
 
   /// Simulasi pemanggilan API — selalu sukses setelah delay 1.5 detik.
