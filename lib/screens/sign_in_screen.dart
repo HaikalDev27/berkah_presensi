@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'sign_up_screen.dart';
 import 'main_navigation.dart';
+import 'package:berkah_presensi/network/apiClient.dart';
+import 'package:berkah_presensi/network/sessionManager.dart';
+import 'package:berkah_presensi/widgets/status_dialog.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -11,9 +14,15 @@ class SignInScreen extends StatefulWidget {
 }
 
 class _SignInScreenState extends State<SignInScreen> {
+  final _formKey = GlobalKey<FormState>();
   final TextEditingController _usernameCtrl = TextEditingController();
   final TextEditingController _passwordCtrl = TextEditingController();
   bool _obscurePassword = true;
+
+  final _apiClient = ApiClient();
+  final _authStorage = AuthStorage();
+
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -37,11 +46,49 @@ class _SignInScreenState extends State<SignInScreen> {
     );
   }
 
-  void _handleSignIn() {
-    // TODO: sambungkan ke API sign-in sesungguhnya.
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const MainNavigation()),
-    );
+  void _handleSignIn() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final data = await _apiClient.login(
+        _usernameCtrl.text.trim(),
+        _passwordCtrl.text,
+      );
+
+      final String token = data['token'] ?? ''; 
+
+      await _authStorage.saveToken(token);
+
+      if (!mounted) return;
+
+      StatusDialog.show(
+        context,
+        title: 'Berhasil',
+        message: 'Selamat datang kembali!',
+        isSuccess: true,
+        onConfirm: () {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const MainNavigation()),
+          );
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      StatusDialog.show(
+        context,
+        isSuccess: false,
+        title: 'Gagal',
+        message: e.toString(),
+        onConfirm: () {
+          Navigator.of(context).pop();
+        },
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -78,11 +125,13 @@ class _SignInScreenState extends State<SignInScreen> {
               // Form
               Padding(
                 padding: const EdgeInsets.fromLTRB(28, 32, 28, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Username', style: TextStyle(fontSize: 16)),
-                    const SizedBox(height: 8),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Username', style: TextStyle(fontSize: 16)),
+                      const SizedBox(height: 8),
                     TextField(
                       controller: _usernameCtrl,
                       decoration: _inputDecoration('Enter your username'),
@@ -181,7 +230,8 @@ class _SignInScreenState extends State<SignInScreen> {
                         ],
                       ),
                     ),
-                  ],
+                    ],
+                  )
                 ),
               ),
             ],
