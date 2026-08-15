@@ -48,7 +48,6 @@ class _SignInScreenState extends State<SignInScreen> {
   }
 
   void _handleSignIn() async {
-<<<<<<< HEAD
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
@@ -91,10 +90,8 @@ class _SignInScreenState extends State<SignInScreen> {
     } finally {
       setState(() => _isLoading = false);
     }
-=======
     LoadingDialog.show(context);
 
-    // TODO: ganti dengan pemanggilan API sign-in sesungguhnya.
     final bool berhasil = await _signInKeServer(
       _usernameCtrl.text,
       _passwordCtrl.text,
@@ -119,7 +116,6 @@ class _SignInScreenState extends State<SignInScreen> {
   Future<bool> _signInKeServer(String username, String password) async {
     await Future.delayed(const Duration(milliseconds: 1500));
     return true;
->>>>>>> 6edb275eb9110ab49e5941429b0b93b84cbc5aef
   }
 
   @override
