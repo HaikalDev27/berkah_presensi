@@ -26,8 +26,6 @@ class _AbsensiDialogState extends State<AbsensiDialog> {
   final List<String> _options = const [
     'Sakit',
     'Izin',
-    'Tanpa Keterangan',
-    'Cuti',
     'Hadir',
   ];
 
