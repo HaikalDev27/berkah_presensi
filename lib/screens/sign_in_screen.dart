@@ -3,6 +3,9 @@ import '../theme/app_theme.dart';
 import '../widgets/loading_dialog.dart';
 import 'sign_up_screen.dart';
 import 'main_navigation.dart';
+import 'package:berkah_presensi/network/apiClient.dart';
+import 'package:berkah_presensi/network/sessionManager.dart';
+import 'package:berkah_presensi/widgets/status_dialog.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -12,9 +15,15 @@ class SignInScreen extends StatefulWidget {
 }
 
 class _SignInScreenState extends State<SignInScreen> {
+  final _formKey = GlobalKey<FormState>();
   final TextEditingController _usernameCtrl = TextEditingController();
   final TextEditingController _passwordCtrl = TextEditingController();
   bool _obscurePassword = true;
+
+  final _apiClient = ApiClient();
+  final _authStorage = AuthStorage();
+
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -39,26 +48,57 @@ class _SignInScreenState extends State<SignInScreen> {
   }
 
   void _handleSignIn() async {
-    LoadingDialog.show(context);
+    if (!_formKey.currentState!.validate()) return;
 
-    // TODO: ganti dengan pemanggilan API sign-in sesungguhnya.
-    final bool berhasil = await _signInKeServer(
-      _usernameCtrl.text,
-      _passwordCtrl.text,
-    );
+    setState(() => _isLoading = true);
 
-    if (!context.mounted) return;
-    LoadingDialog.hide(context);
-
-    if (berhasil) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainNavigation()),
+    try {
+      final data = await _apiClient.login(
+        _usernameCtrl.text.trim(),
+        _passwordCtrl.text,
       );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Username atau password salah')),
+
+      final String token = data['token'] ?? ''; 
+
+      await _authStorage.saveToken(token);
+
+      if (!mounted) return;
+
+      LoadingDialog.show(context);
+
+      final bool berhasil = await _signInKeServer(
+        _usernameCtrl.text,
+        _passwordCtrl.text,
       );
+
+      if (!context.mounted) return;
+      LoadingDialog.hide(context);
+
+      if (berhasil) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const MainNavigation()),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Username atau password salah')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      StatusDialog.show(
+        context,
+        isSuccess: false,
+        title: 'Gagal',
+        message: e.toString(),
+        onConfirm: () {
+          Navigator.of(context).pop();
+        },
+      );
+    } finally {
+      setState(() => _isLoading = false);
     }
+    
   }
 
   /// Simulasi pemanggilan API — selalu sukses setelah delay 1.5 detik.
@@ -97,11 +137,13 @@ class _SignInScreenState extends State<SignInScreen> {
               // Form
               Padding(
                 padding: const EdgeInsets.fromLTRB(28, 32, 28, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Username', style: TextStyle(fontSize: 16)),
-                    const SizedBox(height: 8),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Username', style: TextStyle(fontSize: 16)),
+                      const SizedBox(height: 8),
                     TextField(
                       controller: _usernameCtrl,
                       decoration: _inputDecoration('Enter your username'),
@@ -200,7 +242,8 @@ class _SignInScreenState extends State<SignInScreen> {
                         ],
                       ),
                     ),
-                  ],
+                    ],
+                  )
                 ),
               ),
             ],
