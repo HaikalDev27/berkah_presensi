@@ -2,6 +2,7 @@ import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../models/absensi.dart';
+import '../widgets/logo_badge.dart';
 import 'history_detail_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -133,11 +134,11 @@ class _ProfileRow extends StatelessWidget {
     return Row(
       children: [
         const CircleAvatar(
-          radius: 24,
+          radius: 22,
           backgroundColor: Colors.white24,
           child: Icon(Icons.person, color: Colors.white),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 10),
         const Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -147,7 +148,6 @@ class _ProfileRow extends StatelessWidget {
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
-                  fontSize: 16,
                 ),
               ),
               Text(
@@ -157,18 +157,7 @@ class _ProfileRow extends StatelessWidget {
             ],
           ),
         ),
-        Container(
-          width: 40,
-          height: 40,
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.white24,
-          ),
-          child: Image.asset(
-    'assets/images/berkahglobal.png',
-    fit: BoxFit.contain,
-          ),
-        ),
+        const LogoBadge(size: 36),
       ],
     );
   }

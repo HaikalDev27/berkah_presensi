@@ -75,8 +75,7 @@ class AppTextStyles {
 }
 
 /// ThemeData global untuk MaterialApp.
-ThemeData buildAppTheme() {
-  return ThemeData(
+ThemeData buildAppTheme() {  return ThemeData(
     useMaterial3: true,
     scaffoldBackgroundColor: AppColors.background,
     colorScheme: ColorScheme.fromSeed(seedColor: AppColors.gradientEnd),

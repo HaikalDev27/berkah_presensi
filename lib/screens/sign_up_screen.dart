@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../widgets/loading_dialog.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -37,9 +38,37 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  void _handleSignUp() {
-    // TODO: sambungkan ke API sign-up sesungguhnya.
-    Navigator.of(context).pop();
+  void _handleSignUp() async {
+    LoadingDialog.show(context);
+
+    // TODO: ganti dengan pemanggilan API sign-up sesungguhnya.
+    final bool berhasil = await _signUpKeServer(
+      _usernameCtrl.text,
+      _nikCtrl.text,
+      _passwordCtrl.text,
+    );
+
+    if (!context.mounted) return;
+    LoadingDialog.hide(context);
+
+    if (berhasil) {
+      Navigator.of(context).pop();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pendaftaran gagal, coba lagi')),
+      );
+    }
+  }
+
+  /// Simulasi pemanggilan API — selalu sukses setelah delay 1.5 detik.
+  /// Ganti isi fungsi ini dengan http/dio call ke backend sesungguhnya.
+  Future<bool> _signUpKeServer(
+    String username,
+    String nik,
+    String password,
+  ) async {
+    await Future.delayed(const Duration(milliseconds: 1500));
+    return true;
   }
 
   @override
@@ -53,22 +82,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.only(top: 24, bottom: 40),
-                decoration: const BoxDecoration(
-                  gradient: AppColors.primaryGradient,
-                ),
+                decoration: const BoxDecoration(gradient: AppColors.primaryGradient),
                 child: Column(
                   children: [
-                    Image.asset(
-                      'assets/images/berkahglobal.png',
-                      width: 160,
-                      height: 160,
-                      fit: BoxFit.contain,
+                    const Text(
+                      'PT. Berkah Gobal Business',
+                      style: AppTextStyles.headerSubtitle,
                     ),
                     const SizedBox(height: 20),
-                    const Text(
-                      'Sign Up',
-                      style: AppTextStyles.headerTitle,
-                    ),
+                    _BerkahLogoSmall(size: 130),
+                    const SizedBox(height: 20),
+                    const Text('Sign Up', style: AppTextStyles.headerTitle),
                   ],
                 ),
               ),
@@ -184,29 +208,11 @@ class _BerkahLogoSmall extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return Image.asset(
+      'assets/images/logo.png',
       width: size,
       height: size,
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        color: Colors.white24,
-      ),
-      alignment: Alignment.center,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: const [
-          Icon(Icons.public, color: Colors.white, size: 34),
-          SizedBox(height: 4),
-          Text(
-            'BERKAH',
-            style: TextStyle(
-              color: Colors.yellow,
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-            ),
-          ),
-        ],
-      ),
+      fit: BoxFit.contain,
     );
   }
 }
