@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/absensi_dialog.dart';
 import '../widgets/status_dialog.dart';
+import '../widgets/loading_dialog.dart';
+import '../widgets/logo_badge.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -36,27 +38,59 @@ class _HomeScreenState extends State<HomeScreen> {
   void _openAbsensiDialog({required bool isCheckIn}) {
     AbsensiDialog.show(
       context,
-      onConfirm: (status, comment) {
-        final jam = DateFormat('HH:mm').format(DateTime.now());
-        setState(() {
-          if (isCheckIn) {
-            _checkInTime = jam;
-          } else {
-            _checkOutTime = jam;
-          }
-        });
+      onConfirm: (status, comment) async {
+        // Tampilkan loading selagi menunggu response server.
+        LoadingDialog.show(context);
 
-        // Simulasi hasil sukses — sambungkan ke API asli untuk hasil nyata.
-        StatusDialog.show(
-          context,
-          isSuccess: true,
-          title: 'Attendence Succesfull!',
-          message: isCheckIn
-              ? 'Terimakasih sudah mengirim absen anda!'
-              : 'Terimakasih sudah mengirim absen anda, hati hati dijalan!',
+        // TODO: ganti dengan pemanggilan API absensi sesungguhnya.
+        final bool berhasil = await _kirimAbsensiKeServer(
+          isCheckIn: isCheckIn,
+          status: status,
+          comment: comment,
         );
+
+        if (!context.mounted) return;
+        LoadingDialog.hide(context);
+
+        if (berhasil) {
+          final jam = DateFormat('HH:mm').format(DateTime.now());
+          setState(() {
+            if (isCheckIn) {
+              _checkInTime = jam;
+            } else {
+              _checkOutTime = jam;
+            }
+          });
+
+          StatusDialog.show(
+            context,
+            isSuccess: true,
+            title: 'Attendence Succesfull!',
+            message: isCheckIn
+                ? 'Terimakasih sudah mengirim absen anda!'
+                : 'Terimakasih sudah mengirim absen anda, hati hati dijalan!',
+          );
+        } else {
+          StatusDialog.show(
+            context,
+            isSuccess: false,
+            title: 'Attendence Failed!!!',
+            message: 'Absensi Gagal, Mohon Coba Lagi!',
+          );
+        }
       },
     );
+  }
+
+  /// Simulasi pemanggilan API — selalu sukses setelah delay 1.5 detik.
+  /// Ganti isi fungsi ini dengan http/dio call ke backend sesungguhnya.
+  Future<bool> _kirimAbsensiKeServer({
+    required bool isCheckIn,
+    required String status,
+    required String comment,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 1500));
+    return true;
   }
 
   @override
@@ -294,18 +328,7 @@ class _ProfileHeader extends StatelessWidget {
             ],
           ),
         ),
-        Container(
-          width: 40,
-          height: 40,
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.white24,
-          ),
-          child: Image.asset(
-            'assets/images/berkahglobal.png',
-            fit: BoxFit.contain,
-          ),
-        ),
+        const LogoBadge(size: 40),
       ],
     );
   }

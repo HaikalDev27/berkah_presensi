@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/change_password_dialog.dart';
 import '../widgets/status_dialog.dart';
+import '../widgets/loading_dialog.dart';
+import '../widgets/logo_badge.dart';
 import 'sign_in_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -19,8 +21,19 @@ class ProfileScreen extends StatelessWidget {
             child: const Text('Batal'),
           ),
           TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
+            onPressed: () async {
+              Navigator.of(context).pop(); // tutup dialog konfirmasi
+
+              LoadingDialog.show(context);
+
+              // TODO: ganti dengan pemanggilan API logout sesungguhnya
+              // (misal hapus token, panggil endpoint logout, dsb).
+              await _logoutDiServer();
+
+              if (!context.mounted) return;
+              LoadingDialog.hide(context);
+
+              if (!context.mounted) return;
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (_) => const SignInScreen()),
                 (route) => false,
@@ -33,12 +46,25 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
+  /// Simulasi proses logout — delay singkat lalu selesai.
+  /// Ganti isi fungsi ini dengan pemanggilan API logout sesungguhnya.
+  Future<void> _logoutDiServer() async {
+    await Future.delayed(const Duration(milliseconds: 800));
+  }
+
   void _handleChangePassword(BuildContext context) {
     ChangePasswordDialog.show(
       context,
-      onConfirm: (oldPass, newPass) {
-        // TODO: sambungkan ke API ganti password sesungguhnya.
-        final bool success = newPass.trim().isNotEmpty;
+      onConfirm: (oldPass, newPass) async {
+        // Tampilkan loading selagi menunggu response server.
+        LoadingDialog.show(context);
+
+        // TODO: ganti dengan pemanggilan API ganti password sesungguhnya.
+        final bool success = await _gantiPasswordDiServer(oldPass, newPass);
+
+        if (!context.mounted) return;
+        LoadingDialog.hide(context);
+
         StatusDialog.show(
           context,
           isSuccess: success,
@@ -49,6 +75,13 @@ class ProfileScreen extends StatelessWidget {
         );
       },
     );
+  }
+
+  /// Simulasi pemanggilan API — sukses selama password baru tidak kosong.
+  /// Ganti isi fungsi ini dengan http/dio call ke backend sesungguhnya.
+  Future<bool> _gantiPasswordDiServer(String oldPass, String newPass) async {
+    await Future.delayed(const Duration(milliseconds: 1500));
+    return newPass.trim().isNotEmpty;
   }
 
   @override
@@ -69,20 +102,9 @@ class ProfileScreen extends StatelessWidget {
                   decoration: const BoxDecoration(gradient: AppColors.primaryGradient),
                   child: Column(
                     children: [
-                      Align(
+                      const Align(
                         alignment: Alignment.topRight,
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white24,
-                          ),
-                          child: Image.asset(
-    'assets/images/berkahglobal.png',
-    fit: BoxFit.contain,
-                          ),
-                        ),
+                        child: LogoBadge(size: 40),
                       ),
                       const Text(
                         'PT. Berkah Gobal Business',

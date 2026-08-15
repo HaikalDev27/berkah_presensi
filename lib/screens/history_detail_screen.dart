@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../models/absensi.dart';
+import '../widgets/logo_badge.dart';
 
 class HistoryDetailScreen extends StatelessWidget {
   final Absensi item;
@@ -32,18 +33,9 @@ class HistoryDetailScreen extends StatelessWidget {
                       style: AppTextStyles.headerTitle,
                     ),
                   ),
-                  Container(
-                    width: 40,
-                    height: 40,
-                    margin: const EdgeInsets.only(right: 8),
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white24,
-                    ),
-                    child: Image.asset(
-    'assets/images/berkahglobal.png',
-    fit: BoxFit.contain,
-                    ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: LogoBadge(size: 40),
                   ),
                 ],
               ),
