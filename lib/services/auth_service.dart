@@ -1,0 +1,50 @@
+import '../config/api_config.dart';
+import '../models/login_response.dart';
+import '../network/api_client.dart';
+import '../session/session_manager.dart';
+
+/// services/auth_service.dart
+///
+/// Fungsi-fungsi terkait autentikasi yang dipanggil LANGSUNG dari
+/// screen (misal LoginScreen). Ini "pintu masuk" untuk fitur auth —
+/// screen tidak perlu tahu detail ApiClient/endpoint/JSON sama sekali.
+class AuthService {
+  final ApiClient _apiClient;
+  final SessionManager _sessionManager;
+
+  AuthService(this._apiClient, this._sessionManager);
+
+  /// Login dengan username & password.
+  /// Kalau berhasil: otomatis menyimpan token + data user ke SessionManager,
+  /// lalu mengembalikan LoginResponse (berisi token & user) untuk dipakai
+  /// screen kalau perlu (misal langsung menampilkan nama/NIK).
+  ///
+  /// Kalau gagal (username/password salah, dsb): melempar ApiException
+  /// dengan pesan yang berasal dari backend (contoh: "Username atau
+  /// password salah").
+  Future<LoginResponse> login(String username, String password) async {
+    final response = await _apiClient.post(
+      ApiConfig.login,
+      body: {
+        'username': username,
+        'password': password,
+      },
+      useAuth: false, // endpoint login tidak butuh token
+    );
+
+    final loginResponse = LoginResponse.fromJson(
+      response['data'] as Map<String, dynamic>,
+    );
+
+    await _sessionManager.saveSession(loginResponse.token, loginResponse.user);
+
+    return loginResponse;
+  }
+
+  /// Logout: cukup hapus sesi lokal.
+  /// (Backend memakai JWT stateless — tidak ada endpoint logout di server,
+  /// karena tidak ada tabel token/session yang perlu dihapus di database.)
+  Future<void> logout() async {
+    await _sessionManager.clearSession();
+  }
+}

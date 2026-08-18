@@ -14,8 +14,17 @@ dependencies:
   cupertino_icons: ^1.0.6
   intl: ^0.20.2
   http: ^1.6.0
+<<<<<<< HEAD
   flutter_secure_storage: ^11.0.0
   flutter_native_splash: ^2.4.8
+=======
+  flutter_secure_storage: ^10.3.1
+  flutter_native_splash: ^2.4.7
+  flutter_launcher_icons: ^0.14.4
+  shared_preferences: ^2.5.5
+  local_auth: ^3.0.1
+  pinput: ^6.0.2
+>>>>>>> efbcb94083024663bc58afbad2d5a7d450b6ab37
 
 dev_dependencies:
   flutter_test:
