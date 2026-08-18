@@ -2,16 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'theme/app_theme.dart';
 import 'screens/sign_in_screen.dart';
-import 'network/sessionManager.dart';
+import 'session/session_manager.dart';
 
 void main() async {
   runApp(const BerkahPresensiApp());
 
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Cek keberadaan token sebelum app dirender
-  final authStorage = AuthStorage();
-  final String? token = await authStorage.getToken();
 }
 
 class BerkahPresensiApp extends StatelessWidget {

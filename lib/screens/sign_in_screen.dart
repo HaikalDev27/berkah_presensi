@@ -3,9 +3,12 @@ import '../theme/app_theme.dart';
 import '../widgets/loading_dialog.dart';
 import 'sign_up_screen.dart';
 import 'main_navigation.dart';
-import 'package:berkah_presensi/network/apiClient.dart';
-import 'package:berkah_presensi/network/sessionManager.dart';
+import 'package:berkah_presensi/models/login_response.dart';
+import 'package:berkah_presensi/network/api_client.dart';
+import 'package:berkah_presensi/session/session_manager.dart';
+import 'package:berkah_presensi/services/auth_service.dart';
 import 'package:berkah_presensi/widgets/status_dialog.dart';
+import 'package:berkah_presensi/network/api_exception.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -15,13 +18,13 @@ class SignInScreen extends StatefulWidget {
 }
 
 class _SignInScreenState extends State<SignInScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final TextEditingController _usernameCtrl = TextEditingController();
-  final TextEditingController _passwordCtrl = TextEditingController();
+  final _usernameCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
   bool _obscurePassword = true;
 
-  final _apiClient = ApiClient();
-  final _authStorage = AuthStorage();
+  final _sessionManager = SessionManager();
+  late final _apiClient = ApiClient(_sessionManager);
+  late final _authService = AuthService(_apiClient, _sessionManager);
 
   bool _isLoading = false;
 
@@ -48,58 +51,41 @@ class _SignInScreenState extends State<SignInScreen> {
   }
 
   void _handleSignIn() async {
-    if (!_formKey.currentState!.validate()) return;
-
     setState(() => _isLoading = true);
+    LoadingDialog.show(context);
 
     try {
-      final data = await _apiClient.login(
+      // Satu-satunya request login. Kalau berhasil, AuthService otomatis
+      // menyimpan token + data user lewat SessionManager — tidak perlu
+      // saveToken manual lagi di sini.
+      await _authService.login(
         _usernameCtrl.text.trim(),
         _passwordCtrl.text,
       );
 
-      final String token = data['token'] ?? ''; 
-
-      await _authStorage.saveToken(token);
-
       if (!mounted) return;
 
-      LoadingDialog.show(context);
-
-      final bool berhasil = await _signInKeServer(
-        _usernameCtrl.text,
-        _passwordCtrl.text,
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MainNavigation()),
       );
-
-      if (!context.mounted) return;
-      LoadingDialog.hide(context);
-
-      if (berhasil) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const MainNavigation()),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Username atau password salah')),
-        );
-      }
-    } catch (e) {
+    } on ApiException catch (e) {
       if (!mounted) return;
 
+      // e.message berisi pesan asli dari backend, contoh:
+      // "Username atau password salah"
       StatusDialog.show(
         context,
         isSuccess: false,
         title: 'Gagal',
-        message: e.toString(),
+        message: e.message,
         onConfirm: () {
           Navigator.of(context).pop();
         },
       );
     } finally {
-      setState(() => _isLoading = false);
-    }
-    
+    if (mounted) setState(() => _isLoading = false);
   }
+}
 
   /// Simulasi pemanggilan API — selalu sukses setelah delay 1.5 detik.
   /// Ganti isi fungsi ini dengan http/dio call ke backend sesungguhnya.
@@ -138,7 +124,6 @@ class _SignInScreenState extends State<SignInScreen> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(28, 32, 28, 24),
                 child: Form(
-                  key: _formKey,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
