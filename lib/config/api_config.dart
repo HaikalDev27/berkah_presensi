@@ -21,8 +21,9 @@ class ApiConfig {
   // 3. Setelah deploy ke InfinityFree, ganti dengan domain aslinya:
   //      static const String baseUrl = 'https://namadomainanda.infinityfreeapp.com/api';
 
-  static const String baseUrl = 'http://192.168.137.194/API_Absensi/api';
-  // static const String baseUrl = 'http://192.168.100.4/api_presensi/api';
+  // static const String baseUrl = 'http://192.168.137.194/API_Absensi/api';
+  static const String baseUrl = 'http://192.168.100.4/api_presensi/api';
+  // static const String baseUrl = 'http://localhost/api_presensi/api';
 
   // -------------------------------------------------------------------
   // AUTH ENDPOINTS

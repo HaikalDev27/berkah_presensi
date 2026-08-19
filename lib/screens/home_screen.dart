@@ -6,6 +6,7 @@ import '../widgets/absensi_dialog.dart';
 import '../widgets/status_dialog.dart';
 import '../widgets/loading_dialog.dart';
 import '../widgets/logo_badge.dart';
+import '../services/biometric_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -39,7 +40,67 @@ class _HomeScreenState extends State<HomeScreen> {
     AbsensiDialog.show(
       context,
       onConfirm: (status, comment) async {
-        // Tampilkan loading selagi menunggu response server.
+        // 1. Cek status biometrik & minta verifikasi fingerprint/Face ID
+        //    sebelum absen dikirim. Setiap kondisi dikasih pesan yang jelas
+        //    ke user, tidak lagi diam-diam dilewati.
+        final BiometricStatus biometricStatus =
+            await BiometricService.checkStatus();
+
+        if (!context.mounted) return;
+
+        bool terverifikasi;
+
+        switch (biometricStatus) {
+          case BiometricStatus.available:
+            terverifikasi = await BiometricService.authenticate(
+              reason: isCheckIn
+                  ? 'Verifikasi identitas untuk Check In'
+                  : 'Verifikasi identitas untuk Check Out',
+            );
+            break;
+
+          case BiometricStatus.notEnrolled:
+            if (!context.mounted) return;
+            StatusDialog.show(
+              context,
+              isSuccess: false,
+              title: 'Attendence Failed!!!',
+              message:
+                  'Belum ada fingerprint/Face ID terdaftar di HP ini. '
+                  'Silakan daftarkan dulu lewat Pengaturan > Keamanan.',
+            );
+            return; // hentikan proses, jangan lanjut kirim ke server
+
+          case BiometricStatus.notSupported:
+            // Device/emulator tidak punya sensor biometrik sama sekali —
+            // lanjutkan tanpa verifikasi supaya tetap bisa dipakai testing.
+            terverifikasi = true;
+            break;
+
+          case BiometricStatus.error:
+            if (!context.mounted) return;
+            StatusDialog.show(
+              context,
+              isSuccess: false,
+              title: 'Attendence Failed!!!',
+              message: 'Gagal memeriksa sensor fingerprint/Face ID, coba lagi.',
+            );
+            return;
+        }
+
+        if (!context.mounted) return;
+
+        if (!terverifikasi) {
+          StatusDialog.show(
+            context,
+            isSuccess: false,
+            title: 'Attendence Failed!!!',
+            message: 'Verifikasi fingerprint/Face ID gagal, mohon coba lagi!',
+          );
+          return; // batalkan proses, jangan lanjut kirim ke server
+        }
+
+        // 2. Verifikasi berhasil → tampilkan loading & kirim ke server.
         LoadingDialog.show(context);
 
         // TODO: ganti dengan pemanggilan API absensi sesungguhnya.

@@ -2,13 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'theme/app_theme.dart';
 import 'screens/sign_in_screen.dart';
-import 'session/session_manager.dart';
 
-void main() async {
+void main() {
   runApp(const BerkahPresensiApp());
-
-  WidgetsFlutterBinding.ensureInitialized();
-  
 }
 
 class BerkahPresensiApp extends StatelessWidget {
