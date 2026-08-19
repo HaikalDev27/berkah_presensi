@@ -5,9 +5,37 @@ import '../widgets/status_dialog.dart';
 import '../widgets/loading_dialog.dart';
 import '../widgets/logo_badge.dart';
 import 'sign_in_screen.dart';
+import '../services/auth_service.dart';
+import '../network/api_client.dart';
+import '../session/session_manager.dart';
+import '../models/user_model.dart';
 
-class ProfileScreen extends StatelessWidget {
+// 1. DIUBAH MENJADI STATEFULWIDGET
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  // Tempat menampung data user hasil fetch API
+  UserModel? currentUser;
+  
+  late final SessionManager _sessionManager;
+  late final ApiClient _apiClient;
+  late final AuthService _authService;
+  late Future<UserModel> _userFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    // Inisialisasi service di initState agar API hanya dipanggil 1x
+    _sessionManager = SessionManager();
+    _apiClient = ApiClient(_sessionManager);
+    _authService = AuthService(_apiClient, _sessionManager);
+    _userFuture = _authService.getProfile(); // Ganti sesuai nama fungsi di tempatmu
+  }
 
   void _handleLogout(BuildContext context) {
     showDialog(
@@ -22,18 +50,14 @@ class ProfileScreen extends StatelessWidget {
           ),
           TextButton(
             onPressed: () async {
-              Navigator.of(context).pop(); // tutup dialog konfirmasi
+              Navigator.of(context).pop();
 
               LoadingDialog.show(context);
-
-              // TODO: ganti dengan pemanggilan API logout sesungguhnya
-              // (misal hapus token, panggil endpoint logout, dsb).
               await _logoutDiServer();
 
-              if (!context.mounted) return;
+              if (!mounted) return;
               LoadingDialog.hide(context);
 
-              if (!context.mounted) return;
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (_) => const SignInScreen()),
                 (route) => false,
@@ -46,23 +70,18 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  /// Simulasi proses logout — delay singkat lalu selesai.
-  /// Ganti isi fungsi ini dengan pemanggilan API logout sesungguhnya.
   Future<void> _logoutDiServer() async {
-    await Future.delayed(const Duration(milliseconds: 800));
+    await _authService.logout();
   }
 
   void _handleChangePassword(BuildContext context) {
     ChangePasswordDialog.show(
       context,
       onConfirm: (oldPass, newPass) async {
-        // Tampilkan loading selagi menunggu response server.
         LoadingDialog.show(context);
-
-        // TODO: ganti dengan pemanggilan API ganti password sesungguhnya.
         final bool success = await _gantiPasswordDiServer(oldPass, newPass);
 
-        if (!context.mounted) return;
+        if (!mounted) return;
         LoadingDialog.hide(context);
 
         StatusDialog.show(
@@ -77,8 +96,6 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  /// Simulasi pemanggilan API — sukses selama password baru tidak kosong.
-  /// Ganti isi fungsi ini dengan http/dio call ke backend sesungguhnya.
   Future<bool> _gantiPasswordDiServer(String oldPass, String newPass) async {
     await Future.delayed(const Duration(milliseconds: 1500));
     return newPass.trim().isNotEmpty;
@@ -90,112 +107,137 @@ class ProfileScreen extends StatelessWidget {
       backgroundColor: AppColors.background,
       body: SafeArea(
         bottom: false,
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ClipPath(
-                clipper: _BottomWaveClipper(),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 48),
-                  decoration: const BoxDecoration(gradient: AppColors.primaryGradient),
-                  child: Column(
-                    children: [
-                      const Align(
-                        alignment: Alignment.topRight,
-                        child: LogoBadge(size: 40),
-                      ),
-                      const Text(
-                        'PT. Berkah Gobal Business',
-                        style: AppTextStyles.headerSubtitle,
-                      ),
-                      const SizedBox(height: 16),
-                      const CircleAvatar(
-                        radius: 46,
-                        backgroundColor: Colors.white24,
-                        child: Icon(Icons.person, color: Colors.white, size: 50),
-                      ),
-                      const SizedBox(height: 14),
-                      const Text(
-                        'Yuda Aditya Pratama',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                      const Text(
-                        'IT Support   ›  100276AB2',
-                        style: TextStyle(color: Colors.white70),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Transform.translate(
-                offset: const Offset(0, -24),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    children: [
-                      const _ProfileField(
-                        icon: Icons.person_outline,
-                        label: 'Nama',
-                        value: 'Yuda Aditya Pratama',
-                      ),
-                      const SizedBox(height: 14),
-                      _ProfileField(
-                        icon: Icons.lock_outline,
-                        label: 'Password',
-                        value: '***********',
-                        trailing: IconButton(
-                          icon: const Icon(Icons.edit, color: AppColors.textGrey),
-                          onPressed: () => _handleChangePassword(context),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      const _ProfileField(
-                        icon: Icons.badge_outlined,
-                        label: 'ID Karyawan',
-                        value: '100276AB2',
-                      ),
-                      const SizedBox(height: 14),
-                      const _ProfileField(
-                        icon: Icons.work_outline,
-                        label: 'Jabatan',
-                        value: 'IT Support',
-                      ),
-                      const SizedBox(height: 20),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: () => _handleLogout(context),
-                          style: OutlinedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            side: BorderSide.none,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
+        child: FutureBuilder<UserModel>(
+          future: _userFuture,
+          builder: (context, snapshot) {
+            // Berikan indikator loading di tengah layar saat pertama kali buka
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            } else if (snapshot.hasError) {
+              return const Center(child: Text('Error loading profile'));
+            } else if (!snapshot.hasData) {
+              return const Center(child: Text('No profile data'));
+            }
+
+            // Data berhasil didapat
+            final user = snapshot.data!;
+
+            return SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ClipPath(
+                    clipper: _BottomWaveClipper(),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 48),
+                      decoration: const BoxDecoration(gradient: AppColors.primaryGradient),
+                      child: Column(
+                        children: [
+                          const Align(
+                            alignment: Alignment.topRight,
+                            child: LogoBadge(size: 40),
                           ),
-                          icon: const Icon(Icons.logout, color: AppColors.danger),
-                          label: const Text(
-                            'LOG OUT',
-                            style: TextStyle(
-                              color: AppColors.danger,
+                          const Text(
+                            'PT. Berkah Gobal Business',
+                            style: AppTextStyles.headerSubtitle,
+                          ),
+                          const SizedBox(height: 16),
+                          const CircleAvatar(
+                            radius: 46,
+                            backgroundColor: Colors.white24,
+                            child: Icon(Icons.person, color: Colors.white, size: 50),
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            'Halo, ${user.nama}!',
+                            style: const TextStyle(
+                              color: Colors.white,
                               fontWeight: FontWeight.bold,
+                              fontSize: 18,
                             ),
                           ),
-                        ),
+                          
+                          // 3. JABATAN & NIK DI HEADER
+                          Text(
+                            '${user.nmJabatan}  ›  ${user.nik}',
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 24),
-                    ],
+                    ),
                   ),
-                ),
+                  Transform.translate(
+                    offset: const Offset(0, -24),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Column(
+                        children: [
+                          // 4. FIELD DETAIL SEKARANG MENGGUNAKAN DATA ASLI API
+                          _ProfileField(
+                            icon: Icons.person_outline,
+                            label: 'Nama',
+                            value: user.nama,
+                          ),
+                          const SizedBox(height: 14),
+                          _ProfileField(
+                            icon: Icons.lock_outline,
+                            label: 'Password',
+                            value: '***********',
+                            trailing: IconButton(
+                              icon: const Icon(Icons.edit, color: AppColors.textGrey),
+                              onPressed: () => _handleChangePassword(context),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          _ProfileField(
+                            icon: Icons.badge_outlined,
+                            label: 'ID Karyawan / NIK',
+                            value: user.nik,
+                          ),
+                          const SizedBox(height: 14),
+                          _ProfileField(
+                            icon: Icons.work_outline,
+                            label: 'Jabatan',
+                            value: user.nmJabatan,
+                          ),
+                          const SizedBox(height: 14),
+                          _ProfileField(
+                            icon: Icons.business_outlined,
+                            label: 'Unit',
+                            value: user.nmUnit,
+                          ),
+                          const SizedBox(height: 20),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () => _handleLogout(context),
+                              style: OutlinedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                side: BorderSide.none,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              icon: const Icon(Icons.logout, color: AppColors.danger),
+                              label: const Text(
+                                'LOG OUT',
+                                style: TextStyle(
+                                  color: AppColors.danger,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );

@@ -55,9 +55,6 @@ class _SignInScreenState extends State<SignInScreen> {
     LoadingDialog.show(context);
 
     try {
-      // Satu-satunya request login. Kalau berhasil, AuthService otomatis
-      // menyimpan token + data user lewat SessionManager — tidak perlu
-      // saveToken manual lagi di sini.
       await _authService.login(
         _usernameCtrl.text.trim(),
         _passwordCtrl.text,
@@ -70,9 +67,6 @@ class _SignInScreenState extends State<SignInScreen> {
       );
     } on ApiException catch (e) {
       if (!mounted) return;
-
-      // e.message berisi pesan asli dari backend, contoh:
-      // "Username atau password salah"
       StatusDialog.show(
         context,
         isSuccess: false,
@@ -86,13 +80,6 @@ class _SignInScreenState extends State<SignInScreen> {
     if (mounted) setState(() => _isLoading = false);
   }
 }
-
-  /// Simulasi pemanggilan API — selalu sukses setelah delay 1.5 detik.
-  /// Ganti isi fungsi ini dengan http/dio call ke backend sesungguhnya.
-  Future<bool> _signInKeServer(String username, String password) async {
-    await Future.delayed(const Duration(milliseconds: 1500));
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {

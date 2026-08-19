@@ -2,6 +2,7 @@ import '../config/api_config.dart';
 import '../models/login_response.dart';
 import '../network/api_client.dart';
 import '../session/session_manager.dart';
+import '../models/user_model.dart';
 
 /// services/auth_service.dart
 ///
@@ -39,6 +40,19 @@ class AuthService {
     await _sessionManager.saveSession(loginResponse.token, loginResponse.user);
 
     return loginResponse;
+  }
+
+  Future<UserModel> getProfile() async {
+    final response = await _apiClient.get(ApiConfig.me, useAuth: true);
+
+    final user = UserModel.fromJson(response['data'] as Map<String, dynamic>);
+
+    final token = await _sessionManager.getToken();
+    if (token != null) {
+      await _sessionManager.saveSession(token, user);
+    }
+
+    return user;
   }
 
   /// Logout: cukup hapus sesi lokal.

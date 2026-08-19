@@ -6,6 +6,10 @@ import '../widgets/absensi_dialog.dart';
 import '../widgets/status_dialog.dart';
 import '../widgets/loading_dialog.dart';
 import '../widgets/logo_badge.dart';
+import '../models/user_model.dart';
+import '../services/auth_service.dart';
+import '../network/api_client.dart';
+import '../session/session_manager.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,6 +19,13 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+
+  final _sessionManager = SessionManager();
+  late final _apiClient = ApiClient(_sessionManager);
+  late final _authService = AuthService(_apiClient, _sessionManager);
+
+  late Future<UserModel> _userFuture;
+
   late Timer _timer;
   DateTime _now = DateTime.now();
 
@@ -27,6 +38,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       setState(() => _now = DateTime.now());
     });
+    _userFuture = _authService.getProfile();
   }
 
   @override
@@ -120,7 +132,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const _ProfileHeader(),
+                      FutureBuilder<UserModel>(
+                        future: _userFuture,
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData) {
+                            return const SizedBox(height: 60);
+                            Color.fromARGB(255, 102, 93, 93);
+                          }
+                          return _ProfileHeader(user: snapshot.data!);
+                        },
+                      ),
                       const SizedBox(height: 20),
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -297,7 +318,9 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader();
+  final UserModel user;
+
+  const _ProfileHeader({required this.user});
 
   @override
   Widget build(BuildContext context) {
@@ -309,21 +332,21 @@ class _ProfileHeader extends StatelessWidget {
           child: Icon(Icons.person, color: Colors.white),
         ),
         const SizedBox(width: 12),
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Yuda Aditya Pratama',
-                style: TextStyle(
+                user.nama,
+                style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
                 ),
               ),
               Text(
-                'IT Support   ›  100276AB2',
-                style: TextStyle(color: Colors.white70, fontSize: 12),
+                '${user.nmUnit}   ›  ${user.nik}',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
               ),
             ],
           ),
