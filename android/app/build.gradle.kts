@@ -7,8 +7,7 @@ plugins {
 
 android {
     namespace = "com.example.berkah_presensi"
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    compileSdk = 37
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

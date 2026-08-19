@@ -19,3 +19,4 @@ class LogoBadge extends StatelessWidget {
     );
   }
 }
+
