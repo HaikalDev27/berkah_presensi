@@ -24,6 +24,7 @@ class AbsensiDialog extends StatefulWidget {
 
 class _AbsensiDialogState extends State<AbsensiDialog> {
   final List<String> _options = const [
+    'Hadir',
     'Sakit',
     'Izin',
   ];

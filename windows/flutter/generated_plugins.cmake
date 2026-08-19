@@ -3,11 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
-  flutter_secure_storage_windows
-<<<<<<< HEAD
-=======
   local_auth_windows
->>>>>>> efbcb94083024663bc58afbad2d5a7d450b6ab37
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
