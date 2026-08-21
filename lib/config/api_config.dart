@@ -25,6 +25,7 @@ class ApiConfig {
   static const String baseUrl = 'http://192.168.100.4/api_presensi/api';
   // static const String baseUrl = 'http://localhost/api_presensi/api';
 
+
   // -------------------------------------------------------------------
   // AUTH ENDPOINTS
   // -------------------------------------------------------------------
@@ -40,4 +41,17 @@ class ApiConfig {
   static const String today = '/absensi/today';
   static const String riwayat = '/absensi/riwayat';
   static const String detail = '/absensi/detail';
+
+  // -------------------------------------------------------------------
+  // FACE RECOGNITION ENDPOINT
+  // -------------------------------------------------------------------
+  // TODO backend: endpoint ini BELUM ada, perlu dibuat di sisi server.
+  // Kontrak yang diasumsikan Flutter (sesuaikan kalau beda):
+  //   Request  POST (Bearer token) body: { "foto": "<base64 JPEG>" }
+  //   Response sukses cocok:
+  //     { "success": true, "message": "...", "data": { "match": true,  "score": 0.92 } }
+  //   Response sukses TAPI tidak cocok (bukan error HTTP, tetap success:true,
+  //   supaya UI bisa baca field "match" secara normal lewat ApiClient):
+  //     { "success": true, "message": "...", "data": { "match": false, "score": 0.41 } }
+  static const String verifyFace = '/absensi/verify-face';
 }
