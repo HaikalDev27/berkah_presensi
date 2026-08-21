@@ -16,13 +16,30 @@ dependencies:
   local_auth: ^2.3.0
   shared_preferences: ^2.5.5
   http: ^1.6.0
+  camera: ^0.11.0+2
+  permission_handler: ^11.3.1
+  path_provider: ^2.1.4
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.14.3
 
 flutter:
   uses-material-design: true
   assets:
     - assets/images/
+
+# Konfigurasi flutter_launcher_icons — generate icon untuk semua ukuran
+# otomatis dari 1 file gambar. Jalankan setelah ganti path gambar di bawah:
+#   flutter pub get
+#   flutter pub run flutter_launcher_icons
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/images/logo.png"
+  # Kalau logo.png background-nya transparan dan kamu mau tambah warna latar
+  # solid biar icon tidak polos-transparan di launcher, aktifkan 2 baris ini:
+  # adaptive_icon_background: "#3E9C76"
+  # adaptive_icon_foreground: "assets/images/logo.png"

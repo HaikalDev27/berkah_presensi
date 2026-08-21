@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
@@ -11,6 +12,10 @@ import '../services/auth_service.dart';
 import '../network/api_client.dart';
 import '../session/session_manager.dart';
 import '../services/biometric_service.dart';
+import '../services/camera_permission_service.dart';
+import '../services/face_verification_service.dart';
+import '../network/api_exception.dart';
+import 'face_capture_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -24,6 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _sessionManager = SessionManager();
   late final _apiClient = ApiClient(_sessionManager);
   late final _authService = AuthService(_apiClient, _sessionManager);
+  late final _faceVerificationService = FaceVerificationService(_apiClient);
 
   late Future<UserModel> _userFuture;
 
@@ -112,7 +118,72 @@ class _HomeScreenState extends State<HomeScreen> {
           return; // batalkan proses, jangan lanjut kirim ke server
         }
 
-        // 2. Verifikasi berhasil → tampilkan loading & kirim ke server.
+        // 2. Fingerprint lolos → lanjut verifikasi wajah (face recognition).
+        //    a. Minta izin kamera dulu.
+        final bool izinKamera = await CameraPermissionService.request();
+        if (!context.mounted) return;
+
+        if (!izinKamera) {
+          final permanen = await CameraPermissionService.isPermanentlyDenied();
+          if (!context.mounted) return;
+          StatusDialog.show(
+            context,
+            isSuccess: false,
+            title: 'Attendence Failed!!!',
+            message: permanen
+                ? 'Izin kamera ditolak permanen. Aktifkan manual lewat '
+                    'Pengaturan > Aplikasi > Berkah Presensi > Izin > Kamera.'
+                : 'Izin kamera dibutuhkan untuk verifikasi wajah.',
+          );
+          return;
+        }
+
+        //    b. Buka kamera depan, minta user ambil foto wajah.
+        final File? fotoWajah = await Navigator.of(context).push<File?>(
+          MaterialPageRoute(builder: (_) => const FaceCaptureScreen()),
+        );
+
+        if (!context.mounted) return;
+
+        if (fotoWajah == null) {
+          // User membatalkan pengambilan foto — jangan lanjut kirim absen.
+          return;
+        }
+
+        //    c. Kirim foto ke server untuk dicocokkan dengan foto referensi.
+        LoadingDialog.show(context);
+
+        bool cocok;
+        try {
+          final hasil = await _faceVerificationService.verify(fotoWajah);
+          cocok = hasil.match;
+        } on ApiException catch (e) {
+          if (!context.mounted) return;
+          LoadingDialog.hide(context);
+          StatusDialog.show(
+            context,
+            isSuccess: false,
+            title: 'Attendence Failed!!!',
+            message: 'Verifikasi wajah gagal: ${e.message}',
+          );
+          return;
+        }
+
+        if (!context.mounted) return;
+        LoadingDialog.hide(context);
+
+        if (!cocok) {
+          StatusDialog.show(
+            context,
+            isSuccess: false,
+            title: 'Attendence Failed!!!',
+            message: 'Wajah tidak cocok dengan data karyawan terdaftar. '
+                'Mohon coba lagi.',
+          );
+          return;
+        }
+
+        // 3. Fingerprint + wajah lolos → tampilkan loading & kirim absen.
         LoadingDialog.show(context);
 
         // TODO: ganti dengan pemanggilan API absensi sesungguhnya.
