@@ -65,6 +65,7 @@ class _SignInScreenState extends State<SignInScreen> {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const MainNavigation()),
       );
+
     } on ApiException catch (e) {
       if (!mounted) return;
       StatusDialog.show(

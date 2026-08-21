@@ -1,3 +1,4 @@
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 /// config/api_config.dart
 ///
 /// Menyimpan base URL backend dan daftar path endpoint di satu tempat.
@@ -22,22 +23,24 @@ class ApiConfig {
   //      static const String baseUrl = 'https://namadomainanda.infinityfreeapp.com/api';
 
   // static const String baseUrl = 'http://192.168.137.194/API_Absensi/api';
-  static const String baseUrl = 'http://192.168.100.4/api_presensi/api';
-  // static const String baseUrl = 'http://localhost/api_presensi/api';
+  // static const String baseUrl = 'http://192.168.100.4/api_presensi/api';
+  // static const String baseUrl = 'http://192.168.0.100/api_presensi/api';
+  static String get baseUrl => dotenv.env['BASE_URL']!;
+  static String get apiKey => dotenv.env['API_KEY']!;
 
   // -------------------------------------------------------------------
   // AUTH ENDPOINTS
   // -------------------------------------------------------------------
-  static const String login = '/auth/login';
-  static const String me = '/auth/me';
-  static const String changePassword = '/auth/change-password';
+  static String get login => '/auth/login';
+  static String get me => '/auth/me';
+  static String get changePassword => '/auth/change-password';
 
   // -------------------------------------------------------------------
   // ABSENSI ENDPOINTS
   // -------------------------------------------------------------------
-  static const String checkin = '/absensi/checkin';
-  static const String checkout = '/absensi/checkout';
-  static const String today = '/absensi/today';
-  static const String riwayat = '/absensi/riwayat';
-  static const String detail = '/absensi/detail';
+  static String get checkin => '/absensi/checkin';
+  static String get checkout => '/absensi/checkout';
+  static String get today => '/absensi/today';
+  static String get riwayat => '/absensi/riwayat';
+  static String get detail => '/absensi/detail';
 }

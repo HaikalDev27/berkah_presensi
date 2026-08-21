@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:async';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +12,10 @@ import '../services/auth_service.dart';
 import '../network/api_client.dart';
 import '../session/session_manager.dart';
 import '../services/biometric_service.dart';
+import '../network/api_exception.dart';
+import 'package:geolocator/geolocator.dart';
+import '../services/absensi_service.dart';
+import '../utils/location_helper.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -24,6 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _sessionManager = SessionManager();
   late final _apiClient = ApiClient(_sessionManager);
   late final _authService = AuthService(_apiClient, _sessionManager);
+  late final _absensiService = AbsensiService(_apiClient);
 
   late Future<UserModel> _userFuture;
 
@@ -48,122 +54,213 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  void _openAbsensiDialog({required bool isCheckIn}) {
-    AbsensiDialog.show(
-      context,
-      onConfirm: (status, comment) async {
-        // 1. Cek status biometrik & minta verifikasi fingerprint/Face ID
-        //    sebelum absen dikirim. Setiap kondisi dikasih pesan yang jelas
-        //    ke user, tidak lagi diam-diam dilewati.
-        final BiometricStatus biometricStatus =
-            await BiometricService.checkStatus();
+  Future<bool> _verifyBiometric({required String reason}) async {
+    final BiometricStatus biometricStatus = await BiometricService.checkStatus();
 
-        if (!context.mounted) return;
+    if (!context.mounted) return false;
 
-        bool terverifikasi;
-
-        switch (biometricStatus) {
-          case BiometricStatus.available:
-            terverifikasi = await BiometricService.authenticate(
-              reason: isCheckIn
-                  ? 'Verifikasi identitas untuk Check In'
-                  : 'Verifikasi identitas untuk Check Out',
-            );
-            break;
-
-          case BiometricStatus.notEnrolled:
-            if (!context.mounted) return;
-            StatusDialog.show(
-              context,
-              isSuccess: false,
-              title: 'Attendence Failed!!!',
-              message:
-                  'Belum ada fingerprint/Face ID terdaftar di HP ini. '
-                  'Silakan daftarkan dulu lewat Pengaturan > Keamanan.',
-            );
-            return; // hentikan proses, jangan lanjut kirim ke server
-
-          case BiometricStatus.notSupported:
-            // Device/emulator tidak punya sensor biometrik sama sekali —
-            // lanjutkan tanpa verifikasi supaya tetap bisa dipakai testing.
-            terverifikasi = true;
-            break;
-
-          case BiometricStatus.error:
-            if (!context.mounted) return;
-            StatusDialog.show(
-              context,
-              isSuccess: false,
-              title: 'Attendence Failed!!!',
-              message: 'Gagal memeriksa sensor fingerprint/Face ID, coba lagi.',
-            );
-            return;
-        }
-
-        if (!context.mounted) return;
-
-        if (!terverifikasi) {
+    switch (biometricStatus) {
+      case BiometricStatus.available:
+        final ok = await BiometricService.authenticate(reason: reason);
+        if (!ok && context.mounted) {
           StatusDialog.show(
             context,
             isSuccess: false,
             title: 'Attendence Failed!!!',
             message: 'Verifikasi fingerprint/Face ID gagal, mohon coba lagi!',
           );
-          return; // batalkan proses, jangan lanjut kirim ke server
         }
+        return ok;
 
-        // 2. Verifikasi berhasil → tampilkan loading & kirim ke server.
+      case BiometricStatus.notEnrolled:
+        if (context.mounted) {
+          StatusDialog.show(
+            context,
+            isSuccess: false,
+            title: 'Attendence Failed!!!',
+            message:
+                'Belum ada fingerprint/Face ID terdaftar di HP ini. '
+                'Silakan daftarkan dulu lewat Pengaturan > Keamanan.',
+          );
+        }
+        return false;
+
+      case BiometricStatus.notSupported:
+        // Device/emulator tidak punya sensor biometrik -> lanjut tanpa verifikasi
+        return true;
+
+      case BiometricStatus.error:
+        if (context.mounted) {
+          StatusDialog.show(
+            context,
+            isSuccess: false,
+            title: 'Attendence Failed!!!',
+            message: 'Gagal memeriksa sensor fingerprint/Face ID, coba lagi.',
+          );
+        }
+        return false;
+    }
+  }
+
+  /// CHECK-IN — tampilkan AbsensiDialog dulu (pilih Hadir/Sakit/Izin +
+  /// comment + foto kalau perlu), baru verifikasi biometrik & kirim.
+  void _openAbsensiDialog() {
+    AbsensiDialog.show(
+      context,
+      onConfirm: (status, comment, photo) async {
+        final terverifikasi = await _verifyBiometric(
+          reason: 'Verifikasi identitas untuk Check In',
+        );
+        if (!context.mounted || !terverifikasi) return;
+
         LoadingDialog.show(context);
 
-        // TODO: ganti dengan pemanggilan API absensi sesungguhnya.
-        final bool berhasil = await _kirimAbsensiKeServer(
-          isCheckIn: isCheckIn,
-          status: status,
-          comment: comment,
-        );
+        String? errorMessage;
+        bool berhasil = false;
+
+        try {
+          final position = await LocationHelper.getCurrentPosition();
+
+          await _absensiService.checkin(
+            latitude: position.latitude.toString(),
+            longitude: position.longitude.toString(),
+            status: _mapStatusLabelToCode(status),
+            keterangan: comment.trim().isNotEmpty ? comment.trim() : null,
+            photo: photo,
+          );
+
+          berhasil = true;
+        } on ApiException catch (e) {
+          errorMessage = e.message;
+        } catch (e) {
+          errorMessage = e.toString().replaceFirst('Exception: ', '');
+        }
 
         if (!context.mounted) return;
         LoadingDialog.hide(context);
 
         if (berhasil) {
           final jam = DateFormat('HH:mm').format(DateTime.now());
-          setState(() {
-            if (isCheckIn) {
-              _checkInTime = jam;
-            } else {
-              _checkOutTime = jam;
-            }
-          });
+          setState(() => _checkInTime = jam);
 
           StatusDialog.show(
             context,
             isSuccess: true,
             title: 'Attendence Succesfull!',
-            message: isCheckIn
-                ? 'Terimakasih sudah mengirim absen anda!'
-                : 'Terimakasih sudah mengirim absen anda, hati hati dijalan!',
+            message: 'Terimakasih sudah mengirim absen anda!',
           );
         } else {
           StatusDialog.show(
             context,
             isSuccess: false,
             title: 'Attendence Failed!!!',
-            message: 'Absensi Gagal, Mohon Coba Lagi!',
+            message: errorMessage ?? 'Absensi Gagal, Mohon Coba Lagi!',
           );
         }
       },
     );
   }
 
-  /// Simulasi pemanggilan API — selalu sukses setelah delay 1.5 detik.
-  /// Ganti isi fungsi ini dengan http/dio call ke backend sesungguhnya.
-  Future<bool> _kirimAbsensiKeServer({
+  /// CHECK-OUT
+  Future<void> _handleCheckOut() async {
+    final terverifikasi = await _verifyBiometric(
+      reason: 'Verifikasi identitas untuk Check Out',
+    );
+    if (!context.mounted || !terverifikasi) return;
+
+    LoadingDialog.show(context);
+
+    String? errorMessage;
+    bool berhasil = false;
+
+    try {
+      final position = await LocationHelper.getCurrentPosition();
+
+      await _absensiService.checkout(
+        latitude: position.latitude.toString(),
+        longitude: position.longitude.toString(),
+      );
+
+      berhasil = true;
+    } on ApiException catch (e) {
+      errorMessage = e.message;
+    } catch (e) {
+      errorMessage = e.toString().replaceFirst('Exception: ', '');
+    }
+
+    if (!context.mounted) return;
+    LoadingDialog.hide(context);
+
+    if (berhasil) {
+      final jam = DateFormat('HH:mm').format(DateTime.now());
+      setState(() => _checkOutTime = jam);
+
+      StatusDialog.show(
+        context,
+        isSuccess: true,
+        title: 'Attendence Succesfull!',
+        message: 'Terimakasih sudah mengirim absen anda, hati hati dijalan!',
+      );
+    } else {
+      StatusDialog.show(
+        context,
+        isSuccess: false,
+        title: 'Attendence Failed!!!',
+        message: errorMessage ?? 'Absensi Gagal, Mohon Coba Lagi!',
+      );
+    }
+  }
+
+  /// Ubah label radio ('Hadir'/'Sakit'/'Izin') jadi kode yang dipahami
+  /// backend ('H'/'S'/'I').
+  String _mapStatusLabelToCode(String label) {
+    switch (label) {
+      case 'Sakit':
+        return 'S';
+      case 'Izin':
+        return 'I';
+      case 'Hadir':
+      default:
+        return 'H';
+    }
+  }
+
+  /// Panggil API absensi sesungguhnya (checkin/checkout), termasuk
+  /// mengambil lokasi GPS device dulu. Melempar Exception/ApiException
+  /// kalau gagal (ditangkap oleh pemanggil di atas).
+  Future<void> _kirimAbsensiKeServer({
     required bool isCheckIn,
     required String status,
     required String comment,
+    File? photo,
   }) async {
-    await Future.delayed(const Duration(milliseconds: 1500));
-    return true;
+    // Ambil lokasi GPS device saat ini. Kalau GPS mati/izin ditolak,
+    // ini akan throw Exception dengan pesan yang jelas (lihat
+    // location_helper.dart) — otomatis tertangkap oleh catch di pemanggil.
+    final position = await LocationHelper.getCurrentPosition();
+
+    final latitude = position.latitude.toString();
+    final longitude = position.longitude.toString();
+
+    if (isCheckIn) {
+      final statusCode = _mapStatusLabelToCode(status);
+
+      await _absensiService.checkin(
+        latitude: latitude,
+        longitude: longitude,
+        status: statusCode,
+        keterangan: comment.trim().isNotEmpty ? comment.trim() : null,
+        photo: photo,
+      );
+    } else {
+      // Checkout tidak butuh status/comment/photo — backend cuma
+      // butuh lat/long, dan akan menolak sendiri kalau status hari ini
+      // bukan Hadir (lihat guard baru di AbsensiController::checkout()).
+      await _absensiService.checkout(
+        latitude: latitude,
+        longitude: longitude,
+      );
+    }
   }
 
   @override
@@ -273,7 +370,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           label: 'Check In',
                           time: _checkInTime ?? '08:00',
                           color: AppColors.checkInBlue,
-                          onTap: () => _openAbsensiDialog(isCheckIn: true),
+                          onTap: () => _openAbsensiDialog(),
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -282,7 +379,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           label: 'Check Out',
                           time: _checkOutTime ?? '08:00',
                           color: AppColors.checkOutOrange,
-                          onTap: () => _openAbsensiDialog(isCheckIn: false),
+                          onTap: () => _handleCheckOut(),
                         ),
                       ),
                     ],

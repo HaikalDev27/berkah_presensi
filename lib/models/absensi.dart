@@ -22,41 +22,35 @@ class Absensi {
     required this.checkOut,
     required this.jamKerja,
   });
+
+  factory Absensi.fromJson(Map<String, dynamic> json) {
+    return Absensi(
+      tanggal: json['tanggal'],
+      status: json['status'],
+      idAbsensi: json['id_absensi'],
+      nik: json['nik'],
+      idUnit: json['id_unit'],
+      idJabatan: json['id_jabatan'],
+      checkIn: json['check_in'],
+      checkOut: json['check_out'],
+      jamKerja: json['jam_kerja'],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'tanggal': tanggal,
+      'status': status,
+      'id_absensi': idAbsensi,
+      'nik': nik,
+      'id_unit': idUnit,
+      'id_jabatan': idJabatan,
+      'check_in': checkIn,
+      'check_out': checkOut,
+      'jam_kerja': jamKerja,
+    };
+  }
+
 }
 
-/// Data dummy dipakai supaya UI bisa langsung dilihat tanpa backend.
-final List<Absensi> dummyAbsensiList = [
-  const Absensi(
-    tanggal: '18 Februari 2026',
-    status: 'Hadir',
-    idAbsensi: '100276AB2',
-    nik: '0008736282',
-    idUnit: '27',
-    idJabatan: '3',
-    checkIn: '06:45',
-    checkOut: '16:00',
-    jamKerja: '07:00',
-  ),
-  const Absensi(
-    tanggal: '17 Februari 2026',
-    status: 'Hadir',
-    idAbsensi: '100276AB2',
-    nik: '0008736282',
-    idUnit: '27',
-    idJabatan: '3',
-    checkIn: '07:00',
-    checkOut: '16:00',
-    jamKerja: '07:00',
-  ),
-  const Absensi(
-    tanggal: '16 Februari 2026',
-    status: 'Hadir',
-    idAbsensi: '100276AB2',
-    nik: '0008736282',
-    idUnit: '27',
-    idJabatan: '3',
-    checkIn: '07:00',
-    checkOut: '16:00',
-    jamKerja: '07:00',
-  ),
-];
+

@@ -3,6 +3,7 @@ import '../models/login_response.dart';
 import '../network/api_client.dart';
 import '../session/session_manager.dart';
 import '../models/user_model.dart';
+import '../models/absensi.dart';
 
 /// services/auth_service.dart
 ///
@@ -53,6 +54,16 @@ class AuthService {
     }
 
     return user;
+  }
+
+  Future<List<Absensi>> getAbsensiHistory() async {
+    final response = await _apiClient.get(ApiConfig.riwayat, useAuth: true);
+
+    final absensiList = (response['data'] as List)
+        .map((item) => Absensi.fromJson(item))
+        .toList();
+
+    return absensiList;
   }
 
   /// Logout: cukup hapus sesi lokal.

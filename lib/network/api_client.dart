@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import '../session/session_manager.dart';
 import 'api_exception.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// network/api_client.dart
 ///
@@ -62,6 +63,9 @@ class ApiClient {
 
     final headers = <String, String>{
       'Content-Type': 'application/json',
+      'X-API-KEY': ApiConfig.apiKey,
+
+      'ngrok-skip-browser-warning': 'true'
     };
 
     // Sisipkan token JWT otomatis untuk endpoint yang butuh login.
@@ -96,6 +100,7 @@ class ApiClient {
       }
     } catch (e) {
       // Error jaringan: tidak ada internet, server tidak bisa dihubungi, dll.
+      print('DEBUG - Error koneksi asli: $e');
       throw ApiException('Tidak dapat terhubung ke server. Periksa koneksi Anda.');
     }
 
@@ -104,6 +109,7 @@ class ApiClient {
       decoded = jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
       // Response bukan JSON valid (misal server mengembalikan HTML error).
+      print('DEBUG - Response body mentah: ${response.body}');
       throw ApiException(
         'Response server tidak valid (status ${response.statusCode})',
         statusCode: response.statusCode,

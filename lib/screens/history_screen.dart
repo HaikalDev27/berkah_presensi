@@ -4,6 +4,10 @@ import '../theme/app_theme.dart';
 import '../models/absensi.dart';
 import '../widgets/logo_badge.dart';
 import 'history_detail_screen.dart';
+import '../models/user_model.dart';
+import '../services/auth_service.dart';
+import '../network/api_client.dart';
+import '../session/session_manager.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -13,8 +17,22 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
+  final _sessionManager = SessionManager();
+  late final _apiClient = ApiClient(_sessionManager);
+  late final _authService = AuthService(_apiClient, _sessionManager);
+
+  late Future<UserModel> _userFuture;
+  late Future<List<Absensi>> _absensiFuture;
+
   DateTime _fromDate = DateTime(2026, 2, 20);
   DateTime _toDate = DateTime(2026, 2, 20);
+
+  @override
+  void initState() {
+    super.initState();
+    _userFuture = _authService.getProfile();
+    _absensiFuture = _authService.getAbsensiHistory();
+  }
 
   Future<void> _pickDate({required bool isFrom}) async {
     final initial = isFrom ? _fromDate : _toDate;
@@ -55,7 +73,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const _ProfileRow(),
+                  FutureBuilder<UserModel>(
+                    future: _userFuture,
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return const SizedBox(height: 60);
+                        Color.fromARGB(255, 102, 93, 93);
+                      }
+                      return _ProfileHeader(user: snapshot.data!);
+                    },
+                  ),
                   const SizedBox(height: 16),
                   const Center(
                     child: Text('History', style: AppTextStyles.headerTitle),
@@ -100,22 +127,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
             // List riwayat
             Expanded(
-              child: ListView.separated(
-                padding: const EdgeInsets.all(20),
-                itemCount: dummyAbsensiList.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 14),
-                itemBuilder: (context, index) {
-                  final item = dummyAbsensiList[index];
-                  return _HistoryCard(
-                    item: item,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => HistoryDetailScreen(item: item),
-                        ),
-                      );
-                    },
-                  );
+              child: FutureBuilder<List<Absensi>>(
+                future: _absensiFuture,
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  return _AbsensiList(absensiList: snapshot.data!);
                 },
               ),
             ),
@@ -126,38 +144,69 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 }
 
-class _ProfileRow extends StatelessWidget {
-  const _ProfileRow();
+class _AbsensiList extends StatelessWidget {
+  final List<Absensi> absensiList;
+
+  const _AbsensiList({required this.absensiList});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      padding: const EdgeInsets.all(20),
+      itemCount: absensiList.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 14),
+      itemBuilder: (context, index) {
+        final item = absensiList[index];
+        return _HistoryCard(
+          item: item,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => HistoryDetailScreen(item: item),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _ProfileHeader extends StatelessWidget {
+  final UserModel user;
+
+  const _ProfileHeader({required this.user});
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
         const CircleAvatar(
-          radius: 22,
+          radius: 24,
           backgroundColor: Colors.white24,
           child: Icon(Icons.person, color: Colors.white),
         ),
-        const SizedBox(width: 10),
-        const Expanded(
+        const SizedBox(width: 12),
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Yuda Aditya Pratama',
-                style: TextStyle(
+                user.nama,
+                style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
+                  fontSize: 16,
                 ),
               ),
               Text(
-                'IT Support   ›  100276AB2',
-                style: TextStyle(color: Colors.white70, fontSize: 12),
+                '${user.nmUnit}   ›  ${user.nik}',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
               ),
             ],
           ),
         ),
-        const LogoBadge(size: 36),
+        const LogoBadge(size: 40),
       ],
     );
   }
@@ -228,7 +277,8 @@ class _HistoryCard extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
           boxShadow: const [
-            BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2)),
+            BoxShadow(
+                color: Colors.black12, blurRadius: 6, offset: Offset(0, 2)),
           ],
         ),
         child: Column(
@@ -245,13 +295,20 @@ class _HistoryCard extends StatelessWidget {
             const SizedBox(height: 10),
             Row(
               children: [
-                _TimeChip(icon: Icons.login, time: item.checkIn, label: 'Check in'),
+                _TimeChip(
+                    icon: Icons.login, time: item.checkIn, label: 'Check in'),
                 const SizedBox(width: 12),
                 const VerticalDivider(width: 1),
                 const SizedBox(width: 12),
-                _TimeChip(icon: Icons.logout, time: item.checkOut, label: 'Check Out'),
+                _TimeChip(
+                    icon: Icons.logout,
+                    time: item.checkOut,
+                    label: 'Check Out'),
                 const SizedBox(width: 12),
-                _TimeChip(icon: Icons.access_time, time: item.jamKerja, label: 'Jam Kerja'),
+                _TimeChip(
+                    icon: Icons.access_time,
+                    time: item.jamKerja,
+                    label: 'Jam Kerja'),
               ],
             ),
           ],
@@ -290,7 +347,8 @@ class _TimeChip extends StatelessWidget {
             ),
           ],
         ),
-        Text(label, style: const TextStyle(color: AppColors.textGrey, fontSize: 12)),
+        Text(label,
+            style: const TextStyle(color: AppColors.textGrey, fontSize: 12)),
       ],
     );
   }
