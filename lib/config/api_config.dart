@@ -46,15 +46,17 @@ class ApiConfig {
   static String get detail => '/absensi/detail';
 
   // -------------------------------------------------------------------
-  // FACE RECOGNITION ENDPOINT
+  // FACE RECOGNITION ENDPOINTS
   // -------------------------------------------------------------------
-  // TODO backend: endpoint ini BELUM ada, perlu dibuat di sisi server.
-  // Kontrak yang diasumsikan Flutter (sesuaikan kalau beda):
-  //   Request  POST (Bearer token) body: { "foto": "<base64 JPEG>" }
-  //   Response sukses cocok:
+  // Kontrak (sudah dibangun di backend, controllers/WajahController.php):
+  //   Request  POST (Bearer token) body: { "embedding": [192 angka float] }
+  //   Response sukses (enroll):
+  //     { "success": true, "message": "...", "data": null }
+  //   Response sukses (verify, cocok):
   //     { "success": true, "message": "...", "data": { "match": true,  "score": 0.92 } }
-  //   Response sukses TAPI tidak cocok (bukan error HTTP, tetap success:true,
-  //   supaya UI bisa baca field "match" secara normal lewat ApiClient):
+  //   Response sukses (verify, TIDAK cocok — bukan error HTTP, tetap
+  //   success:true, supaya UI baca field "match" secara normal):
   //     { "success": true, "message": "...", "data": { "match": false, "score": 0.41 } }
-  static const String verifyFace = '/absensi/verify-face';
+  static String get verifyFace => '/absensi/verify-face';
+  static String get enrollFace => '/wajah/enroll';
 }

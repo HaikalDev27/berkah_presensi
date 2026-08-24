@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import '../theme/app_theme.dart';
 import '../widgets/change_password_dialog.dart';
 import '../widgets/status_dialog.dart';
@@ -7,8 +8,13 @@ import '../widgets/logo_badge.dart';
 import 'sign_in_screen.dart';
 import '../services/auth_service.dart';
 import '../network/api_client.dart';
+import '../network/api_exception.dart';
 import '../session/session_manager.dart';
 import '../models/user_model.dart';
+import '../services/face_verification_service.dart';
+import '../services/face_embedding_service.dart';
+import '../services/camera_permission_service.dart';
+import 'face_capture_screen.dart';
 
 // 1. DIUBAH MENJADI STATEFULWIDGET
 class ProfileScreen extends StatefulWidget {
@@ -25,6 +31,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late final SessionManager _sessionManager;
   late final ApiClient _apiClient;
   late final AuthService _authService;
+  late final FaceVerificationService _faceVerificationService;
   late Future<UserModel> _userFuture;
 
   @override
@@ -34,6 +41,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _sessionManager = SessionManager();
     _apiClient = ApiClient(_sessionManager);
     _authService = AuthService(_apiClient, _sessionManager);
+    _faceVerificationService = FaceVerificationService(_apiClient);
     _userFuture = _authService.getProfile(); // Ganti sesuai nama fungsi di tempatmu
   }
 
@@ -72,6 +80,69 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _logoutDiServer() async {
     await _authService.logout();
+  }
+
+  /// Daftarkan / perbarui wajah referensi user — buka kamera, ambil foto,
+  /// ekstrak embedding di HP, lalu kirim ke server untuk disimpan.
+  Future<void> _handleDaftarkanWajah(BuildContext context) async {
+    final bool izinKamera = await CameraPermissionService.request();
+    if (!context.mounted) return;
+
+    if (!izinKamera) {
+      final permanen = await CameraPermissionService.isPermanentlyDenied();
+      if (!context.mounted) return;
+      StatusDialog.show(
+        context,
+        isSuccess: false,
+        title: 'Attendence Failed!!!',
+        message: permanen
+            ? 'Izin kamera ditolak permanen. Aktifkan manual lewat '
+                'Pengaturan > Aplikasi > Berkah Presensi > Izin > Kamera.'
+            : 'Izin kamera dibutuhkan untuk mendaftarkan wajah.',
+      );
+      return;
+    }
+
+    final File? fotoWajah = await Navigator.of(context).push<File?>(
+      MaterialPageRoute(builder: (_) => const FaceCaptureScreen()),
+    );
+
+    if (!context.mounted) return;
+    if (fotoWajah == null) return; // user membatalkan
+
+    LoadingDialog.show(context);
+
+    try {
+      await _faceVerificationService.enroll(fotoWajah);
+
+      if (!context.mounted) return;
+      LoadingDialog.hide(context);
+
+      StatusDialog.show(
+        context,
+        isSuccess: true,
+        title: 'Update successful!!',
+        message: 'Wajah Anda berhasil didaftarkan sebagai referensi absensi.',
+      );
+    } on FaceEmbeddingException catch (e) {
+      if (!context.mounted) return;
+      LoadingDialog.hide(context);
+      StatusDialog.show(
+        context,
+        isSuccess: false,
+        title: 'update failed!!!',
+        message: e.message,
+      );
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      LoadingDialog.hide(context);
+      StatusDialog.show(
+        context,
+        isSuccess: false,
+        title: 'update failed!!!',
+        message: 'Gagal mendaftarkan wajah: ${e.message}',
+      );
+    }
   }
 
   void _handleChangePassword(BuildContext context) {
@@ -208,6 +279,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             value: user.nmUnit,
                           ),
                           const SizedBox(height: 20),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () => _handleDaftarkanWajah(context),
+                              style: OutlinedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                side: const BorderSide(color: AppColors.gradientEnd),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              icon: const Icon(Icons.face_retouching_natural, color: AppColors.gradientEnd),
+                              label: const Text(
+                                'DAFTARKAN WAJAH',
+                                style: TextStyle(
+                                  color: AppColors.gradientEnd,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
                           SizedBox(
                             width: double.infinity,
                             child: OutlinedButton.icon(

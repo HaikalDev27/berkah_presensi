@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 import '../theme/app_theme.dart';
 
 /// Layar kamera khusus untuk ambil foto wajah sebelum absen dikirim.
@@ -20,6 +21,7 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
   Future<void>? _initializeFuture;
   String? _errorMessage;
   XFile? _capturedPhoto;
+  String? _finalPhotoPath; // path hasil flip (bisa beda ekstensi dari _capturedPhoto)
 
   @override
   void initState() {
@@ -62,7 +64,39 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
     if (_controller == null || !_controller!.value.isInitialized) return;
     try {
       final photo = await _controller!.takePicture();
-      setState(() => _capturedPhoto = photo);
+
+      // Kamera depan secara alami menghasilkan gambar "mirror" (efek
+      // cermin, kiri-kanan terbalik) — sama seperti yang tampil di
+      // preview. Balik horizontal di sini supaya FILE foto yang dipakai
+      // untuk enroll/verifikasi wajah sesuai orientasi asli, bukan
+      // terbalik.
+      final isFrontCamera = _controller!.description.lensDirection ==
+          CameraLensDirection.front;
+
+      String finalPath = photo.path;
+
+      if (isFrontCamera) {
+        final bytes = await File(photo.path).readAsBytes();
+        final decoded = img.decodeImage(bytes);
+        if (decoded != null) {
+          final flipped = img.flipHorizontal(decoded);
+
+          // PENTING: simpan sebagai PNG, bukan JPEG. Re-encode ke JPEG
+          // lewat package `image` bisa menyebabkan pergeseran warna
+          // (foto jadi kekuningan/sepia) di beberapa device karena
+          // konversi warna YCbCr-nya tidak selalu presisi. PNG bersifat
+          // lossless dan tidak melalui proses itu sama sekali, jadi
+          // warnanya tetap akurat.
+          final pngPath = '${photo.path}_flipped.png';
+          await File(pngPath).writeAsBytes(img.encodePng(flipped));
+          finalPath = pngPath;
+        }
+      }
+
+      setState(() {
+        _capturedPhoto = photo;
+        _finalPhotoPath = finalPath;
+      });
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -72,12 +106,15 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
   }
 
   void _fotoUlang() {
-    setState(() => _capturedPhoto = null);
+    setState(() {
+      _capturedPhoto = null;
+      _finalPhotoPath = null;
+    });
   }
 
   void _gunakanFoto() {
-    if (_capturedPhoto == null) return;
-    Navigator.of(context).pop(File(_capturedPhoto!.path));
+    if (_finalPhotoPath == null) return;
+    Navigator.of(context).pop(File(_finalPhotoPath!));
   }
 
   @override
@@ -126,6 +163,11 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
   /// Render preview kamera full-screen TANPA distorsi rasio.
   /// Pakai FittedBox(cover) + SizedBox seukuran resolusi asli sensor,
   /// bukan CameraPreview polos yang dipaksa stretch ke ukuran layar.
+  ///
+  /// CATATAN: preview TIDAK di-flip di sini. Sebagian besar device
+  /// Android sudah menampilkan preview kamera depan tanpa efek mirror
+  /// secara native — flip hanya diterapkan ke FILE hasil foto (lihat
+  /// _ambilFoto) yang memang butuh dibalik.
   Widget _buildCameraPreview() {
     final previewSize = _controller!.value.previewSize;
 
@@ -229,7 +271,7 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        Image.file(File(_capturedPhoto!.path), fit: BoxFit.cover),
+        Image.file(File(_finalPhotoPath ?? _capturedPhoto!.path), fit: BoxFit.cover),
         Positioned(
           bottom: 24,
           left: 24,
