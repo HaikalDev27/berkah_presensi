@@ -24,14 +24,30 @@ class _HistoryScreenState extends State<HistoryScreen> {
   late Future<UserModel> _userFuture;
   late Future<List<Absensi>> _absensiFuture;
 
-  DateTime _fromDate = DateTime(2026, 2, 20);
-  DateTime _toDate = DateTime(2026, 2, 20);
+  // Default: 7 hari terakhir sampai hari ini (bukan tanggal statis lagi).
+  late DateTime _fromDate = DateTime.now().subtract(const Duration(days: 7));
+  late DateTime _toDate = DateTime.now();
 
   @override
   void initState() {
     super.initState();
     _userFuture = _authService.getProfile();
-    _absensiFuture = _authService.getAbsensiHistory();
+    _reloadAbsensi();
+  }
+ 
+  /// Ambil ulang riwayat absensi sesuai rentang _fromDate/_toDate saat ini.
+  /// Return Future supaya bisa di-await oleh RefreshIndicator.
+  Future<void> _reloadAbsensi() {
+    final future = _authService.getAbsensiHistory(
+      dari: _fromDate,
+      sampai: _toDate,
+    );
+    setState(() {
+      _absensiFuture = future;
+    });
+    // Tunggu future-nya selesai (baik sukses maupun error) sebelum
+    // RefreshIndicator menyembunyikan animasi loading-nya.
+    return future.then((_) {}).catchError((_) {});
   }
 
   Future<void> _pickDate({required bool isFrom}) async {
@@ -50,6 +66,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
           _toDate = picked;
         }
       });
+      // Langsung fetch ulang begitu salah satu tanggal berubah.
+      _reloadAbsensi();
     }
   }
 
@@ -78,7 +96,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     builder: (context, snapshot) {
                       if (!snapshot.hasData) {
                         return const SizedBox(height: 60);
-                        Color.fromARGB(255, 102, 93, 93);
                       }
                       return _ProfileHeader(user: snapshot.data!);
                     },
@@ -127,16 +144,51 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
             // List riwayat
             Expanded(
-              child: FutureBuilder<List<Absensi>>(
-                future: _absensiFuture,
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
+              child: RefreshIndicator(
+                onRefresh: _reloadAbsensi,
+                child: FutureBuilder<List<Absensi>>(
+                  future: _absensiFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
                   }
-                  return _AbsensiList(absensiList: snapshot.data!);
+
+                  if (snapshot.hasError) {
+                    return ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Text(
+                              'Gagal memuat riwayat: ${snapshot.error}',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: AppColors.textGrey),
+                            ),
+                          ),
+                        ],
+                      );
+                  }
+
+                  final data = snapshot.data ?? [];
+
+                  if (data.isEmpty) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Text(
+                          'Tidak ada riwayat absensi pada rentang tanggal ini',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppColors.textGrey),
+                        ),
+                      ),
+                    );
+                  }
+
+                  return _AbsensiList(absensiList: data);
                 },
               ),
             ),
+            )
           ],
         ),
       ),
@@ -260,6 +312,24 @@ class _DateField extends StatelessWidget {
   }
 }
 
+/// Hitung durasi kerja dari string jam 'HH:mm' atau 'HH:mm:ss'.
+/// Mengembalikan '-' kalau gagal di-parse.
+String _calculateWorkDuration(String masuk, String keluar) {
+  try {
+    final m = masuk.split(':');
+    final k = keluar.split(':');
+    final mMinutes = int.parse(m[0]) * 60 + int.parse(m[1]);
+    final kMinutes = int.parse(k[0]) * 60 + int.parse(k[1]);
+    var diff = kMinutes - mMinutes;
+    if (diff < 0) diff += 24 * 60;
+    final jam = diff ~/ 60;
+    final menit = diff % 60;
+    return '${jam}j ${menit}m';
+  } catch (_) {
+    return '-';
+  }
+}
+
 class _HistoryCard extends StatelessWidget {
   final Absensi item;
   final VoidCallback onTap;
@@ -268,6 +338,9 @@ class _HistoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isHadir = item.absensi == 'H';
+    final hasKeterangan = item.keterangan != null && item.keterangan!.isNotEmpty;
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
@@ -284,33 +357,76 @@ class _HistoryCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              item.tanggal,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textDark,
-              ),
-            ),
-            const SizedBox(height: 10),
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _TimeChip(
-                    icon: Icons.login, time: item.checkIn, label: 'Check in'),
-                const SizedBox(width: 12),
-                const VerticalDivider(width: 1),
-                const SizedBox(width: 12),
-                _TimeChip(
-                    icon: Icons.logout,
-                    time: item.checkOut,
-                    label: 'Check Out'),
-                const SizedBox(width: 12),
-                _TimeChip(
-                    icon: Icons.access_time,
-                    time: item.jamKerja,
-                    label: 'Jam Kerja'),
+                Text(
+                  item.tanggal,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textDark,
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    item.statusLabel,
+                    style: TextStyle(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
               ],
             ),
+            const SizedBox(height: 10),
+            if (isHadir)
+              Row(
+                children: [
+                  _TimeChip(
+                    icon: Icons.login,
+                    time: item.masuk ?? '-',
+                    label: 'Check in',
+                  ),
+                  const SizedBox(width: 12),
+                  const VerticalDivider(width: 1),
+                  const SizedBox(width: 12),
+                  _TimeChip(
+                    icon: Icons.logout,
+                    time: item.keluar ?? '-',
+                    label: 'Check Out',
+                  ),
+                  const SizedBox(width: 12),
+                  _TimeChip(
+                    icon: Icons.access_time,
+                    time: (item.masuk != null && item.keluar != null)
+                        ? _calculateWorkDuration(item.masuk!, item.keluar!)
+                        : '-',
+                    label: 'Jam Kerja',
+                  ),
+                ],
+              )
+            else if (hasKeterangan)
+              Row(
+                children: [
+                  const Icon(Icons.info_outline,
+                      size: 16, color: AppColors.textGrey),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      item.keterangan!,
+                      style: const TextStyle(color: AppColors.textGrey),
+                    ),
+                  ),
+                ],
+              ),
           ],
         ),
       ),

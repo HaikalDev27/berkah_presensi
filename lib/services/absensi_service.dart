@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:berkah_presensi/models/absensi.dart';
+
 import '../config/api_config.dart';
 import '../network/api_client.dart';
 
@@ -66,4 +68,47 @@ class AbsensiService {
       useAuth: true,
     );
   }
+
+  Future<Absensi?> getToday() async {
+    final response = await _apiClient.get(ApiConfig.today, useAuth: true);
+    final data = response['data'];
+    if (data == null) {
+      return null;
+    }
+    return Absensi.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<Map<String, int>> getWeeklySummary() async {
+    final now = DateTime.now();
+    final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+
+    String fmt(DateTime d) =>
+        '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+
+    final response = await _apiClient.get(
+      ApiConfig.riwayat,
+      queryParams: {
+        'dari': fmt(startOfWeek),
+        'sampai': fmt(now),
+      },
+      useAuth: true,
+    );
+    final list = (response['data'] as List).cast<Map<String, dynamic>>();
+    final counts = <String, int>{'I': 0, 'S': 0, 'TK': 0, 'C': 0};
+    for (final item in list) {
+      final status = item['absensi'] as String?;
+      if (status != null && counts.containsKey(status)) {
+        counts[status] = counts[status]! + 1;
+      }
+    }
+    return counts;
+  }
+
+  Future<String?> getBatasWaktu() async {
+    final response = await _apiClient.get(ApiConfig.batasWaktu, useAuth: true);
+    return response['data']['jam_batas'] as String?;
+  }
+
 }

@@ -56,14 +56,39 @@ class AuthService {
     return user;
   }
 
-  Future<List<Absensi>> getAbsensiHistory() async {
-    final response = await _apiClient.get(ApiConfig.riwayat, useAuth: true);
+  Future<List<Absensi>> getAbsensiHistory({DateTime? dari, DateTime? sampai}) async {
+    String fmt(DateTime d) =>
+        '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+
+    final response = await _apiClient.get(
+      ApiConfig.riwayat,
+      queryParams: (dari != null && sampai != null)
+          ? {'dari': fmt(dari), 'sampai': fmt(sampai)}
+          : null,
+      useAuth: true,
+    );
 
     final absensiList = (response['data'] as List)
         .map((item) => Absensi.fromJson(item))
         .toList();
 
     return absensiList;
+  }
+
+  Future<void> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    await _apiClient.put(
+      ApiConfig.changePassword,
+      body: {
+        'old_password': oldPassword,
+        'new_password': newPassword,
+      },
+      useAuth: true,
+    );
   }
 
   /// Logout: cukup hapus sesi lokal.

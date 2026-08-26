@@ -14,16 +14,20 @@ import '../theme/app_theme.dart';
 /// backend soal penyimpanan foto (lihat diskusi terkait kolom database).
 class AbsensiDialog extends StatefulWidget {
   final void Function(String status, String comment, File? photo) onConfirm;
+  final String? batasWaktu;
 
-  const AbsensiDialog({super.key, required this.onConfirm});
+  const AbsensiDialog({super.key, required this.onConfirm, this.batasWaktu});
 
   static Future<void> show(
     BuildContext context, {
-    required void Function(String status, String comment, File? photo) onConfirm,
+    required void Function(String status, String comment, File? photo)
+        onConfirm,
+    String? batasWaktu,
   }) {
     return showDialog(
       context: context,
-      builder: (_) => AbsensiDialog(onConfirm: onConfirm),
+      builder: (_) =>
+          AbsensiDialog(onConfirm: onConfirm, batasWaktu: batasWaktu),
     );
   }
 
@@ -39,6 +43,27 @@ class _AbsensiDialogState extends State<AbsensiDialog> {
   ];
 
   String _selected = 'Hadir';
+
+  bool get _lewatBatasWaktu {
+    if (widget.batasWaktu == null) return false;
+    final now = TimeOfDay.now();
+    final parts = widget.batasWaktu!.split(':');
+    final batas =
+        TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+
+    final nowMinutes = now.hour * 60 + now.minute;
+    final batasMinutes = batas.hour * 60 + batas.minute;
+    return nowMinutes > batasMinutes;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (_lewatBatasWaktu) {
+      _selected = 'Izin';
+    }
+  }
+
   final TextEditingController _commentController = TextEditingController();
   String? _commentErrorText;
   File? _selectedPhoto;
@@ -58,7 +83,8 @@ class _AbsensiDialogState extends State<AbsensiDialog> {
   Future<void> _pickPhoto() async {
     final picker = ImagePicker();
     final XFile? picked = await picker.pickImage(
-      source: ImageSource.camera, // kamera langsung, cocok untuk "bukti" real-time
+      source:
+          ImageSource.camera, // kamera langsung, cocok untuk "bukti" real-time
       imageQuality: 70, // kompres supaya ukuran file tidak terlalu besar
     );
 
@@ -81,7 +107,8 @@ class _AbsensiDialogState extends State<AbsensiDialog> {
     // Validasi: foto wajib diisi kalau bukan Hadir
     if (_isPhotoRequired && _selectedPhoto == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Foto bukti wajib dilampirkan untuk $_selected')),
+        SnackBar(
+            content: Text('Foto bukti wajib dilampirkan untuk $_selected')),
       );
       return;
     }
@@ -102,7 +129,7 @@ class _AbsensiDialogState extends State<AbsensiDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+            children: [ 
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -122,26 +149,62 @@ class _AbsensiDialogState extends State<AbsensiDialog> {
               ),
               const SizedBox(height: 8),
               ..._options.map(
-                (option) => RadioListTile<String>(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(option, style: AppTextStyles.label),
-                  value: option,
-                  groupValue: _selected,
-                  activeColor: AppColors.gradientEnd,
-                  onChanged: (value) {
-                    setState(() {
-                      _selected = value!;
-                      // Reset pesan error comment tiap ganti pilihan,
-                      // supaya tidak nyangkut pesan error lama yang
-                      // sudah tidak relevan (misal setelah pindah ke Hadir).
-                      _commentErrorText = null;
-                    });
-                  },
-                ),
+                (option) {
+                  final isHadir = option == 'Hadir';
+                  final disabled = isHadir && _lewatBatasWaktu;
+
+                  return RadioListTile<String>(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      option,
+                      style: disabled
+                          ? AppTextStyles.label.copyWith(color: Colors.grey)
+                          : AppTextStyles.label,
+                    ),
+                    value: option,
+                    groupValue: _selected,
+                    activeColor: AppColors.gradientEnd,
+                    onChanged: disabled
+                        ? null
+                        : (value) {
+                            setState(() {
+                              _selected = value!;
+                              _commentErrorText = null;
+                            });
+                          },
+                  );
+                },
               ),
+              if (_lewatBatasWaktu) ...[
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Sudah melewati batas waktu absen Hadir (${widget.batasWaktu}). '
+                          'Silakan pilih Izin/Sakit.',
+                          style: TextStyle(color: Colors.orange.shade900, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
               const SizedBox(height: 8),
               Text(
-                _isCommentRequired ? 'Comments (wajib diisi) :' : 'Comments (opsional) :',
+                _isCommentRequired
+                    ? 'Comments (wajib diisi) :'
+                    : 'Comments (opsional) :',
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -153,7 +216,6 @@ class _AbsensiDialogState extends State<AbsensiDialog> {
                 controller: _commentController,
                 maxLines: 3,
                 onChanged: (_) {
-                  // Hilangkan pesan error begitu user mulai mengetik lagi.
                   if (_commentErrorText != null) {
                     setState(() => _commentErrorText = null);
                   }
@@ -176,8 +238,6 @@ class _AbsensiDialogState extends State<AbsensiDialog> {
                   ),
                 ),
               ),
-
-              // Bagian upload foto HANYA muncul untuk Sakit/Izin.
               if (_isPhotoRequired) ...[
                 const SizedBox(height: 16),
                 const Text(
@@ -205,7 +265,8 @@ class _AbsensiDialogState extends State<AbsensiDialog> {
                               children: [
                                 Icon(Icons.camera_alt, color: Colors.grey),
                                 SizedBox(height: 4),
-                                Text('Ambil Foto', style: TextStyle(color: Colors.grey)),
+                                Text('Ambil Foto',
+                                    style: TextStyle(color: Colors.grey)),
                               ],
                             ),
                           )
@@ -221,7 +282,6 @@ class _AbsensiDialogState extends State<AbsensiDialog> {
                   ),
                 ),
               ],
-
               const SizedBox(height: 20),
               Row(
                 children: [
@@ -269,7 +329,7 @@ class _AbsensiDialogState extends State<AbsensiDialog> {
                   ),
                 ],
               ),
-            ],
+            ], 
           ),
         ),
       ),

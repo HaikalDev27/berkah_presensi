@@ -45,6 +45,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _userFuture = _authService.getProfile(); // Ganti sesuai nama fungsi di tempatmu
   }
 
+  Future<void> _handleRefresh() async {
+    setState(() {
+      _userFuture = _authService.getProfile();
+    });
+  }
+
   void _handleLogout(BuildContext context) {
     showDialog(
       context: context,
@@ -150,7 +156,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context,
       onConfirm: (oldPass, newPass) async {
         LoadingDialog.show(context);
-        final bool success = await _gantiPasswordDiServer(oldPass, newPass);
+
+        String? errorMessage;
+        bool success = false;
+
+        try {
+          await _authService.changePassword(
+            oldPassword: oldPass,
+            newPassword: newPass,
+          );
+          success = true;
+        } on ApiException catch (e) {
+          errorMessage = e.message;
+        } catch (e) {
+          errorMessage = e.toString().replaceFirst('Exception: ', '');
+        }
 
         if (!mounted) return;
         LoadingDialog.hide(context);
@@ -161,15 +181,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           title: success ? 'Update successful!!' : 'update failed!!!',
           message: success
               ? 'Password anda telah berhasil diganti!'
-              : 'Password anda gagal diganti!!',
+              : (errorMessage ?? 'Password anda gagal diganti!!'),
         );
       },
     );
-  }
-
-  Future<bool> _gantiPasswordDiServer(String oldPass, String newPass) async {
-    await Future.delayed(const Duration(milliseconds: 1500));
-    return newPass.trim().isNotEmpty;
   }
 
   @override
@@ -177,11 +192,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        bottom: false,
-        child: FutureBuilder<UserModel>(
-          future: _userFuture,
-          builder: (context, snapshot) {
-            // Berikan indikator loading di tengah layar saat pertama kali buka
+        child: RefreshIndicator(
+          onRefresh: _handleRefresh,
+          child: FutureBuilder<UserModel>(
+            future: _userFuture,
+            builder: (context, snapshot) {
+              // Berikan indikator loading di tengah layar saat pertama kali buka
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             } else if (snapshot.hasError) {
@@ -210,7 +226,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             child: LogoBadge(size: 40),
                           ),
                           const Text(
-                            'PT. Berkah Gobal Business',
+                            'PT. Berkah Global Business',
                             style: AppTextStyles.headerSubtitle,
                           ),
                           const SizedBox(height: 16),
@@ -334,6 +350,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           },
         ),
       ),
+      )
     );
   }
 }

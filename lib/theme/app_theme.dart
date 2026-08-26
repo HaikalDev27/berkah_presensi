@@ -32,6 +32,8 @@ class AppColors {
   static const Color sakitRed = Color(0xFFE74C3C);
   static const Color tanpaKeteranganPurple = Color(0xFF9B59B6);
   static const Color cutiBlue = Color(0xFF3B82F6);
+
+  static const Color primary = Color(0xFF6FE3B4);
 }
 
 class AppTextStyles {

@@ -1,4 +1,5 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 /// config/api_config.dart
 ///
 /// Menyimpan base URL backend dan daftar path endpoint di satu tempat.
@@ -28,7 +29,6 @@ class ApiConfig {
   static String get baseUrl => dotenv.env['BASE_URL']!;
   static String get apiKey => dotenv.env['API_KEY']!;
 
-
   // -------------------------------------------------------------------
   // AUTH ENDPOINTS
   // -------------------------------------------------------------------
@@ -44,6 +44,7 @@ class ApiConfig {
   static String get today => '/absensi/today';
   static String get riwayat => '/absensi/riwayat';
   static String get detail => '/absensi/detail';
+  static String get batasWaktu => '/absensi/batas-waktu';
 
   // -------------------------------------------------------------------
   // FACE RECOGNITION ENDPOINTS
@@ -59,4 +60,6 @@ class ApiConfig {
   //     { "success": true, "message": "...", "data": { "match": false, "score": 0.41 } }
   static String get verifyFace => '/absensi/verify-face';
   static String get enrollFace => '/wajah/enroll';
+
+  static String get updateVersion => '/app-version';
 }
