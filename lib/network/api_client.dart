@@ -64,7 +64,6 @@ class ApiClient {
     final headers = <String, String>{
       'Content-Type': 'application/json',
       'X-API-KEY': ApiConfig.apiKey,
-
       'ngrok-skip-browser-warning': 'true'
     };
 
@@ -101,7 +100,8 @@ class ApiClient {
     } catch (e) {
       // Error jaringan: tidak ada internet, server tidak bisa dihubungi, dll.
       print('DEBUG - Error koneksi asli: $e');
-      throw ApiException('Tidak dapat terhubung ke server. Periksa koneksi Anda.');
+      throw ApiException(
+          'Tidak dapat terhubung ke server. Periksa koneksi Anda.');
     }
 
     Map<String, dynamic> decoded;
@@ -110,6 +110,12 @@ class ApiClient {
     } catch (e) {
       // Response bukan JSON valid (misal server mengembalikan HTML error).
       print('DEBUG - Response body mentah: ${response.body}');
+      if (response.statusCode == 404) {
+        throw ApiException(
+            'Server sedang tidak aktif (Status ${response.statusCode})',
+            statusCode: response.statusCode
+            );
+      }
       throw ApiException(
         'Response server tidak valid (status ${response.statusCode})',
         statusCode: response.statusCode,
