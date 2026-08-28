@@ -91,6 +91,26 @@ class AuthService {
     );
   }
 
+  /// Langkah terakhir alur "Lupa Password": set password baru pakai
+  /// [resetToken] yang didapat dari FaceVerificationService.verifyForForgotPassword.
+  ///
+  /// Tidak butuh login (useAuth: false) — user memang belum bisa login,
+  /// identitasnya sudah dibuktikan lewat verifikasi wajah di langkah
+  /// sebelumnya (reset_token adalah buktinya, umurnya cuma 5 menit).
+  Future<void> resetPasswordWithToken({
+    required String resetToken,
+    required String newPassword,
+  }) async {
+    await _apiClient.put(
+      ApiConfig.forgotPasswordReset,
+      body: {
+        'reset_token': resetToken,
+        'new_password': newPassword,
+      },
+      useAuth: false,
+    );
+  }
+
   /// Logout: cukup hapus sesi lokal.
   /// (Backend memakai JWT stateless — tidak ada endpoint logout di server,
   /// karena tidak ada tabel token/session yang perlu dihapus di database.)

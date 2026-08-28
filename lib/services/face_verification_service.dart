@@ -73,4 +73,32 @@ class FaceVerificationService {
 
     return FaceVerificationResult.fromJson(data);
   }
+
+  /// Dipakai KHUSUS oleh alur "Lupa Password" — user BELUM login (tidak
+  /// ada token JWT), jadi NIK harus dikirim manual di body (bukan
+  /// diambil dari token seperti [verify]).
+  ///
+  /// Kalau wajah [foto] cocok dengan wajah referensi milik [nik],
+  /// server membalas sebuah "reset_token" berumur pendek (5 menit) yang
+  /// dipakai di langkah berikutnya (set password baru).
+  ///
+  /// Melempar [FaceEmbeddingException] kalau wajah tidak terdeteksi di
+  /// foto, atau [ApiException] kalau NIK tidak ditemukan / wajah belum
+  /// terdaftar / wajah tidak cocok.
+  Future<String> verifyForForgotPassword(String nik, File foto) async {
+    final embedding = await _embeddingService.extractEmbedding(foto);
+
+    final response = await _apiClient.post(
+      ApiConfig.forgotPasswordVerify,
+      body: {'nik': nik, 'embedding': embedding},
+      useAuth: false,
+    );
+
+    final data = response['data'];
+    if (data is! Map<String, dynamic> || data['reset_token'] is! String) {
+      throw ApiException('Response verifikasi wajah tidak valid');
+    }
+
+    return data['reset_token'] as String;
+  }
 }
