@@ -6,6 +6,7 @@ class UserModel {
   final String nmUnit;
   final String idJabatan;
   final String nmJabatan;
+  final bool wajahTerdaftar;
 
   UserModel({
     required this.nik,
@@ -15,6 +16,7 @@ class UserModel {
     required this.nmUnit,
     required this.idJabatan,
     required this.nmJabatan,
+    this.wajahTerdaftar = false,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -26,6 +28,10 @@ class UserModel {
       nmUnit: json['nm_unit'] as String,
       idJabatan: json['id_jabatan'] as String,
       nmJabatan: json['nm_jabatan'] as String,
+      // Field baru dari backend — default false supaya tidak crash kalau
+      // dipanggil dengan response lama (misal endpoint /auth/login yang
+      // belum menyertakan field ini di objek user-nya).
+      wajahTerdaftar: json['wajah_terdaftar'] as bool? ?? false,
     );
   }
 
@@ -38,6 +44,7 @@ class UserModel {
       'nm_unit': nmUnit,
       'id_jabatan': idJabatan,
       'nm_jabatan': nmJabatan,
+      'wajah_terdaftar': wajahTerdaftar,
     };
   }
 }

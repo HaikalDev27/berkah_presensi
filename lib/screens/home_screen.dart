@@ -242,10 +242,16 @@ class _HomeScreenState extends State<HomeScreen> {
         );
         if (!context.mounted || !terverifikasi) return;
 
-        final wajahCocok = await _verifyFace();
-        if (!context.mounted || !wajahCocok) return;
+        // Verifikasi wajah HANYA untuk status Hadir — untuk Izin/Sakit
+        // user tidak hadir secara fisik di lokasi kerja, jadi tidak ada
+        // wajah yang perlu dicocokkan. Fingerprint di atas tetap jalan
+        // supaya identitas pengirim izin/sakit tetap terverifikasi.
+        if (status == 'Hadir') {
+          final wajahCocok = await _verifyFace();
+          if (!context.mounted || !wajahCocok) return;
+        }
 
-        // Fingerprint + wajah lolos → tampilkan loading & kirim absen.
+        // Verifikasi lolos → tampilkan loading & kirim absen.
         LoadingDialog.show(context);
 
         String? errorMessage;

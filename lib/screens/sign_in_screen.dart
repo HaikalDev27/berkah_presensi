@@ -3,6 +3,7 @@ import '../theme/app_theme.dart';
 import '../widgets/loading_dialog.dart';
 import 'sign_up_screen.dart';
 import 'main_navigation.dart';
+import 'forgot_password_screen.dart';
 import 'package:berkah_presensi/models/login_response.dart';
 import 'package:berkah_presensi/network/api_client.dart';
 import 'package:berkah_presensi/session/session_manager.dart';
@@ -146,7 +147,11 @@ class _SignInScreenState extends State<SignInScreen> {
                       alignment: Alignment.centerRight,
                       child: TextButton(
                         onPressed: () {
-                          // TODO: alur lupa password
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const ForgotPasswordScreen(),
+                            ),
+                          );
                         },
                         child: const Text(
                           'Forgot password?',

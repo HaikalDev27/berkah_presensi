@@ -49,7 +49,7 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: false
-  image_path: "assets/images/logo.png"
+  image_path: "assets/images/logoapk.png"
   # Kalau logo.png background-nya transparan dan kamu mau tambah warna latar
   # solid biar icon tidak polos-transparan di launcher, aktifkan 2 baris ini:
   # adaptive_icon_background: "#3E9C76"

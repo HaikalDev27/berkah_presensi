@@ -35,6 +35,8 @@ class ApiConfig {
   static String get login => '/auth/login';
   static String get me => '/auth/me';
   static String get changePassword => '/auth/change-password';
+  static String get forgotPasswordVerify => '/auth/forgot-password/verify';
+  static String get forgotPasswordReset => '/auth/forgot-password/reset';
 
   // -------------------------------------------------------------------
   // ABSENSI ENDPOINTS

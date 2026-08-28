@@ -90,7 +90,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   /// Daftarkan / perbarui wajah referensi user — buka kamera, ambil foto,
   /// ekstrak embedding di HP, lalu kirim ke server untuk disimpan.
-  Future<void> _handleDaftarkanWajah(BuildContext context) async {
+  /// [sudahTerdaftar] hanya dipakai untuk menyesuaikan teks di dialog
+  /// sukses ("didaftarkan" vs "diperbarui") — proses & endpoint-nya sama
+  /// persis (backend pakai ON DUPLICATE KEY UPDATE).
+  Future<void> _handleDaftarkanWajah(
+    BuildContext context, {
+    required bool sudahTerdaftar,
+  }) async {
     final bool izinKamera = await CameraPermissionService.request();
     if (!context.mounted) return;
 
@@ -128,7 +134,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         context,
         isSuccess: true,
         title: 'Update successful!!',
-        message: 'Wajah Anda berhasil didaftarkan sebagai referensi absensi.',
+        message: sudahTerdaftar
+            ? 'Wajah referensi Anda berhasil diperbarui.'
+            : 'Wajah Anda berhasil didaftarkan sebagai referensi absensi.',
+        onConfirm: _handleRefresh,
       );
     } on FaceEmbeddingException catch (e) {
       if (!context.mounted) return;
@@ -298,7 +307,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           SizedBox(
                             width: double.infinity,
                             child: OutlinedButton.icon(
-                              onPressed: () => _handleDaftarkanWajah(context),
+                              onPressed: () => _handleDaftarkanWajah(
+                                context,
+                                sudahTerdaftar: user.wajahTerdaftar,
+                              ),
                               style: OutlinedButton.styleFrom(
                                 backgroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -308,9 +320,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ),
                               ),
                               icon: const Icon(Icons.face_retouching_natural, color: AppColors.gradientEnd),
-                              label: const Text(
-                                'DAFTARKAN WAJAH',
-                                style: TextStyle(
+                              label: Text(
+                                user.wajahTerdaftar ? 'UPDATE WAJAH' : 'DAFTARKAN WAJAH',
+                                style: const TextStyle(
                                   color: AppColors.gradientEnd,
                                   fontWeight: FontWeight.bold,
                                 ),
