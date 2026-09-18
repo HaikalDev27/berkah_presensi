@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/loading_dialog.dart';
+import '../network/api_client.dart';
+import '../network/api_exception.dart';
+import '../session/session_manager.dart';
+import '../services/auth_service.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -14,6 +18,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final TextEditingController _nikCtrl = TextEditingController();
   final TextEditingController _passwordCtrl = TextEditingController();
   bool _obscurePassword = true;
+
+  final _sessionManager = SessionManager();
+  late final _apiClient = ApiClient(_sessionManager);
+  late final _authService = AuthService(_apiClient, _sessionManager);
 
   @override
   void dispose() {
@@ -41,22 +49,32 @@ class _SignUpScreenState extends State<SignUpScreen> {
   void _handleSignUp() async {
     LoadingDialog.show(context);
 
-    // TODO: ganti dengan pemanggilan API sign-up sesungguhnya.
-    final bool berhasil = await _signUpKeServer(
-      _usernameCtrl.text,
-      _nikCtrl.text,
-      _passwordCtrl.text,
-    );
+    String? errorMessage;
+    bool berhasil = false;
+
+    try {
+      await _authService.signUp(
+        nik: _nikCtrl.text.trim(),
+        username: _usernameCtrl.text.trim(),
+        password: _passwordCtrl.text,
+      );
+      berhasil = true;
+    } on ApiException catch (e) {
+      errorMessage = e.message;
+    } catch (e) {
+      errorMessage = e.toString().replaceFirst('Exception', '');
+    }
 
     if (!context.mounted) return;
     LoadingDialog.hide(context);
 
     if (berhasil) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Akun berhasil dibuat. Silahkan login')));
       Navigator.of(context).pop();
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pendaftaran gagal, coba lagi')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(errorMessage ?? 'Pendaftaran gagal, coba lagi')));
     }
   }
 
@@ -71,130 +89,140 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return true;
   }
 
+  Future<void> _reloadData() async {
+    _usernameCtrl.text = '';
+    _passwordCtrl.text = '';
+    _nikCtrl.text = '';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.only(top: 24, bottom: 40),
-                decoration: const BoxDecoration(gradient: AppColors.primaryGradient),
-                child: Column(
-                  children: [
-                    const Text(
-                      'PT. Berkah Gobal Business',
-                      style: AppTextStyles.headerSubtitle,
-                    ),
-                    const SizedBox(height: 20),
-                    _BerkahLogoSmall(size: 130),
-                    const SizedBox(height: 20),
-                    const Text('Sign Up', style: AppTextStyles.headerTitle),
-                  ],
+        child: RefreshIndicator(
+          onRefresh: _reloadData,
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.only(top: 24, bottom: 40),
+                  decoration:
+                      const BoxDecoration(gradient: AppColors.primaryGradient),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'PT. Berkah Gobal Business',
+                        style: AppTextStyles.headerSubtitle,
+                      ),
+                      const SizedBox(height: 20),
+                      _BerkahLogoSmall(size: 130),
+                      const SizedBox(height: 20),
+                      const Text('Sign Up', style: AppTextStyles.headerTitle),
+                    ],
+                  ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(28, 32, 28, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Username', style: TextStyle(fontSize: 16)),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _usernameCtrl,
-                      decoration: _inputDecoration('Enter your username'),
-                    ),
-                    const SizedBox(height: 20),
-                    const Text('NIK', style: TextStyle(fontSize: 16)),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _nikCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: _inputDecoration('Enter your NIK'),
-                    ),
-                    const SizedBox(height: 20),
-                    const Text('Password', style: TextStyle(fontSize: 16)),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _passwordCtrl,
-                      obscureText: _obscurePassword,
-                      decoration: _inputDecoration(
-                        'Enter your password',
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_off
-                                : Icons.visibility,
-                            color: Colors.black45,
-                          ),
-                          onPressed: () => setState(
-                            () => _obscurePassword = !_obscurePassword,
-                          ),
-                        ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(28, 32, 28, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Username', style: TextStyle(fontSize: 16)),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _usernameCtrl,
+                        decoration: _inputDecoration('Enter your username'),
                       ),
-                    ),
-                    const SizedBox(height: 28),
-                    SizedBox(
-                      width: double.infinity,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: AppColors.primaryGradient,
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.transparent,
-                            shadowColor: Colors.transparent,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(30),
+                      const SizedBox(height: 20),
+                      const Text('NIK', style: TextStyle(fontSize: 16)),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _nikCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: _inputDecoration('Enter your NIK'),
+                      ),
+                      const SizedBox(height: 20),
+                      const Text('Password', style: TextStyle(fontSize: 16)),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _passwordCtrl,
+                        obscureText: _obscurePassword,
+                        decoration: _inputDecoration(
+                          'Enter your password',
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                              color: Colors.black45,
                             ),
-                          ),
-                          onPressed: _handleSignUp,
-                          child: const Text(
-                            'Sign Up',
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                            onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword,
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    Center(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text(
-                            'Already have an account?  ',
-                            style: TextStyle(
-                              color: Colors.black87,
-                              fontSize: 14,
-                            ),
+                      const SizedBox(height: 28),
+                      SizedBox(
+                        width: double.infinity,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: AppColors.primaryGradient,
+                            borderRadius: BorderRadius.circular(30),
                           ),
-                          GestureDetector(
-                            onTap: () => Navigator.of(context).pop(),
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              shadowColor: Colors.transparent,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                            ),
+                            onPressed: _handleSignUp,
                             child: const Text(
-                              'Sign In >',
+                              'Sign Up',
                               style: TextStyle(
-                                color: AppColors.gradientEnd,
+                                fontSize: 17,
                                 fontWeight: FontWeight.bold,
-                                fontSize: 14,
+                                color: Colors.white,
                               ),
                             ),
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Already have an account?  ',
+                              style: TextStyle(
+                                color: Colors.black87,
+                                fontSize: 14,
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () => Navigator.of(context).pop(),
+                              child: const Text(
+                                'Sign In >',
+                                style: TextStyle(
+                                  color: AppColors.gradientEnd,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

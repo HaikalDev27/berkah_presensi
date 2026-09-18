@@ -386,6 +386,29 @@ class _HistoryCard extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: item.statusApproval == 'approved'
+                      ? Colors.green.shade50
+                      : Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  item.approvalLabel,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: item.statusApproval == 'approved'
+                        ? Colors.green.shade700
+                        : Colors.orange.shade700,
+                  ),
+                ),
+              ),
+            ),
             const SizedBox(height: 10),
             if (isHadir)
               Row(

@@ -1,7 +1,7 @@
 name: berkah_presensi
 description: Aplikasi absensi karyawan PT. Berkah Global Business
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.1+2
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -28,6 +28,11 @@ dependencies:
   package_info_plus: ^9.0.1
   dio: ^5.11.0
   open_filex: ^4.7.0
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
+  firebase_core: ^3.0.0
+  firebase_messaging: ^15.0.0
+  flutter_local_notifications: ^20.1.0
 
 dev_dependencies:
   flutter_test:

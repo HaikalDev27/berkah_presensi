@@ -10,6 +10,10 @@ import 'package:berkah_presensi/session/session_manager.dart';
 import 'package:berkah_presensi/services/auth_service.dart';
 import 'package:berkah_presensi/widgets/status_dialog.dart';
 import 'package:berkah_presensi/network/api_exception.dart';
+import '../services/update_service.dart';
+import '../widgets/update_dialog.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:berkah_presensi/services/notifikasi_service.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -27,6 +31,8 @@ class _SignInScreenState extends State<SignInScreen> {
   late final _apiClient = ApiClient(_sessionManager);
   late final _authService = AuthService(_apiClient, _sessionManager);
 
+  late final _updateService = UpdateService(_apiClient);
+
   bool _isLoading = false;
 
   @override
@@ -34,6 +40,23 @@ class _SignInScreenState extends State<SignInScreen> {
     _usernameCtrl.dispose();
     _passwordCtrl.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _checkForUpdate();
+  }
+
+  Future<void> _checkForUpdate() async {
+    try {
+      final update = await _updateService.checkForUpdate();
+      if (update != null && mounted) {
+        showUpdateDialog(context, update, _updateService);
+      }
+    } catch (_) {
+      // Gagal cek update (misal tidak ada koneksi) — abaikan diam-diam.
+    }
   }
 
   InputDecoration _inputDecoration(String hint, {Widget? suffixIcon}) {
@@ -51,6 +74,11 @@ class _SignInScreenState extends State<SignInScreen> {
     );
   }
 
+  Future<void> _reloadData() async {
+    _usernameCtrl.text = '';
+    _passwordCtrl.text = '';
+  }
+
   void _handleSignIn() async {
     setState(() => _isLoading = true);
     LoadingDialog.show(context);
@@ -66,7 +94,13 @@ class _SignInScreenState extends State<SignInScreen> {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const MainNavigation()),
       );
+      await FirebaseMessaging.instance.requestPermission();
 
+      final fcmToken = await FirebaseMessaging.instance.getToken();
+      if (fcmToken != null) {
+        final notifikasiService = NotifikasiService(_apiClient);
+        await notifikasiService.registerDeviceToken(fcmToken);
+      }
     } on ApiException catch (e) {
       if (!mounted) return;
       StatusDialog.show(
@@ -78,153 +112,157 @@ class _SignInScreenState extends State<SignInScreen> {
           Navigator.of(context).pop();
         },
       );
+      print('Gagal registrasi device token: $e');
     } finally {
-    if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
-}
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              // Header hijau dengan logo
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.only(top: 24, bottom: 40),
-                decoration: const BoxDecoration(gradient: AppColors.primaryGradient),
-                child: Column(
-                  children: [
-                    const Text(
-                      'PT. Berkah Gobal Business',
-                      style: AppTextStyles.headerSubtitle,
-                    ),
-                    const SizedBox(height: 20),
-                    _BerkahLogo(size: 150),
-                    const SizedBox(height: 20),
-                    const Text('Sign In', style: AppTextStyles.headerTitle),
-                  ],
-                ),
-              ),
-              // Form
-              Padding(
-                padding: const EdgeInsets.fromLTRB(28, 32, 28, 24),
-                child: Form(
+        child: RefreshIndicator(
+          onRefresh: _reloadData,
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                // Header hijau dengan logo
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.only(top: 24, bottom: 40),
+                  decoration:
+                      const BoxDecoration(gradient: AppColors.primaryGradient),
                   child: Column(
+                    children: [
+                      const Text(
+                        'PT. Berkah Gobal Business',
+                        style: AppTextStyles.headerSubtitle,
+                      ),
+                      const SizedBox(height: 20),
+                      _BerkahLogo(size: 150),
+                      const SizedBox(height: 20),
+                      const Text('Sign In', style: AppTextStyles.headerTitle),
+                    ],
+                  ),
+                ),
+                // Form
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(28, 32, 28, 24),
+                  child: Form(
+                      child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text('Username', style: TextStyle(fontSize: 16)),
                       const SizedBox(height: 8),
-                    TextField(
-                      controller: _usernameCtrl,
-                      decoration: _inputDecoration('Enter your username'),
-                    ),
-                    const SizedBox(height: 20),
-                    const Text('Password', style: TextStyle(fontSize: 16)),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _passwordCtrl,
-                      obscureText: _obscurePassword,
-                      decoration: _inputDecoration(
-                        'Enter your password',
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_off
-                                : Icons.visibility,
-                            color: Colors.black45,
-                          ),
-                          onPressed: () => setState(
-                            () => _obscurePassword = !_obscurePassword,
+                      TextField(
+                        controller: _usernameCtrl,
+                        decoration: _inputDecoration('Enter your username'),
+                      ),
+                      const SizedBox(height: 20),
+                      const Text('Password', style: TextStyle(fontSize: 16)),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _passwordCtrl,
+                        obscureText: _obscurePassword,
+                        decoration: _inputDecoration(
+                          'Enter your password',
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                              color: Colors.black45,
+                            ),
+                            onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const ForgotPasswordScreen(),
-                            ),
-                          );
-                        },
-                        child: const Text(
-                          'Forgot password?',
-                          style: TextStyle(color: AppColors.gradientEnd),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: AppColors.primaryGradient,
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.transparent,
-                            shadowColor: Colors.transparent,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(30),
-                            ),
-                          ),
-                          onPressed: _handleSignIn,
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const ForgotPasswordScreen(),
+                              ),
+                            );
+                          },
                           child: const Text(
-                            'Sign In',
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
+                            'Forgot password?',
+                            style: TextStyle(color: AppColors.gradientEnd),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    Center(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text(
-                            'Not registered yet?  ',
-                            style: TextStyle(
-                              color: Colors.black87,
-                              fontSize: 14,
-                            ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: AppColors.primaryGradient,
+                            borderRadius: BorderRadius.circular(30),
                           ),
-                          GestureDetector(
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const SignUpScreen(),
-                                ),
-                              );
-                            },
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              shadowColor: Colors.transparent,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                            ),
+                            onPressed: _handleSignIn,
                             child: const Text(
-                              'Sign Up >',
+                              'Sign In',
                               style: TextStyle(
-                                color: AppColors.gradientEnd,
+                                fontSize: 17,
                                 fontWeight: FontWeight.bold,
-                                fontSize: 14,
+                                color: Colors.white,
                               ),
                             ),
                           ),
-                        ],
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 16),
+                      Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Not registered yet?  ',
+                              style: TextStyle(
+                                color: Colors.black87,
+                                fontSize: 14,
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const SignUpScreen(),
+                                  ),
+                                );
+                              },
+                              child: const Text(
+                                'Sign Up >',
+                                style: TextStyle(
+                                  color: AppColors.gradientEnd,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
-                  )
+                  )),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

@@ -23,6 +23,10 @@ import 'face_capture_screen.dart';
 import '../models/absensi.dart';
 import '../services/update_service.dart';
 import '../widgets/update_dialog.dart';
+import 'package:geolocator/geolocator.dart';
+import '../models/lokasi_absensi.dart';
+import '../widgets/lokasi_confirm_dialog.dart';
+import 'package:image_picker/image_picker.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -379,23 +383,45 @@ class _HomeScreenState extends State<HomeScreen> {
     required String comment,
     File? photo,
   }) async {
-    // Ambil lokasi GPS device saat ini. Kalau GPS mati/izin ditolak,
-    // ini akan throw Exception dengan pesan yang jelas (lihat
-    // location_helper.dart) — otomatis tertangkap oleh catch di pemanggil.
-    final position = await LocationHelper.getCurrentPosition();
+    final daftarLokasi = await _absensiService.getDaftarLokasi();
+
+    final position = await _dapatkanPosisiTerverifikasi(daftarLokasi);
 
     final latitude = position.latitude.toString();
     final longitude = position.longitude.toString();
+
+    final dalamRadius = daftarLokasi.any((lok) {
+      final jarak = Geolocator.distanceBetween(
+        position.latitude, position.longitude,
+        lok.latitude, lok.longitude,
+      );
+      return jarak <= lok.radiusMeter;
+    });
+
+    File? fotoFinal = photo;
+
+    if (!dalamRadius && fotoFinal == null) {
+      final picker = ImagePicker();
+      final XFile? diambil = await picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 70,
+      );
+
+      if (diambil == null) {
+        throw Exception('Foto bukti wajib dilampirkan untuk absen di luar radius lokasi resmi');
+      }
+      fotoFinal = File(diambil.path);
+    }
 
     if (isCheckIn) {
       final statusCode = _mapStatusLabelToCode(status);
 
       await _absensiService.checkin(
-        latitude: latitude,
-        longitude: longitude,
-        status: statusCode,
+        latitude: position.latitude.toString(),
+        longitude: position.longitude.toString(),
+        status: _mapStatusLabelToCode(status),
         keterangan: comment.trim().isNotEmpty ? comment.trim() : null,
-        photo: photo,
+        photo: fotoFinal,
       );
     } else {
       // Checkout tidak butuh status/comment/photo — backend cuma
@@ -405,6 +431,39 @@ class _HomeScreenState extends State<HomeScreen> {
         latitude: latitude,
         longitude: longitude,
       );
+    }
+  }
+
+  Future<Position> _dapatkanPosisiTerverifikasi(
+    List<LokasiAbsensi> daftarLokasi,
+  ) async {
+    while (true) {
+      final position = await LocationHelper.getCurrentPosition();
+
+      final dalamRadius = daftarLokasi.any((lok) {
+        final jarak = Geolocator.distanceBetween(
+          position.latitude, position.longitude,
+          lok.latitude, lok.longitude,
+        );
+        return jarak <= lok.radiusMeter;
+      });
+
+      if (dalamRadius) {
+        return position; // lokasi valid, tidak perlu konfirmasi apa pun
+      }
+
+      if (!mounted) throw Exception('Dibatalkan');
+
+      final dikonfirmasi = await LokasiConfirmDialog.show(
+        context,
+        posisiSaatIni: position,
+        daftarLokasi: daftarLokasi,
+      );
+
+      if (dikonfirmasi) {
+        return position; // user konfirmasi ini memang lokasinya
+      }
+      // kalau "Bukan, Coba Lagi" -> loop lagi, ambil GPS baru
     }
   }
 
@@ -655,6 +714,47 @@ class _HomeScreenState extends State<HomeScreen> {
                                               color: AppColors.textDark,
                                             ),
                                           ),
+                                          const SizedBox(height: 4),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                            decoration: BoxDecoration(
+                                              color: today.statusApproval == 'approved'
+                                                  ? Colors.green.shade50
+                                                  : Colors.orange.shade50,
+                                              borderRadius: BorderRadius.circular(6),
+                                              border: Border.all(
+                                                color: today.statusApproval == 'approved'
+                                                    ? Colors.green.shade200
+                                                    : Colors.orange.shade200,
+                                              ),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  today.statusApproval == 'approved'
+                                                      ? Icons.check_circle
+                                                      : Icons.hourglass_top,
+                                                  size: 14,
+                                                  color: today.statusApproval == 'approved'
+                                                      ? Colors.green.shade700
+                                                      : Colors.orange.shade700,
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  today.approvalLabel,
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: today.statusApproval == 'approved'
+                                                        ? Colors.green.shade700
+                                                        : Colors.orange.shade700,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+
                                           if (today.masuk != null) ...[
                                             const SizedBox(height: 4),
                                             Text('Masuk: ${today.masuk}',

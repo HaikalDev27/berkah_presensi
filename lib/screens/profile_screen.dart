@@ -15,6 +15,7 @@ import '../services/face_verification_service.dart';
 import '../services/face_embedding_service.dart';
 import '../services/camera_permission_service.dart';
 import 'face_capture_screen.dart';
+import '../widgets/lokasi_rumah_card.dart';
 
 // 1. DIUBAH MENJADI STATEFULWIDGET
 class ProfileScreen extends StatefulWidget {
@@ -303,6 +304,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             label: 'Unit',
                             value: user.nmUnit,
                           ),
+                          const SizedBox(height: 14),
+                          const LokasiRumahCard(),
                           const SizedBox(height: 20),
                           SizedBox(
                             width: double.infinity,

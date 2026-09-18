@@ -4,25 +4,15 @@ import 'dart:io';
 import 'package:berkah_presensi/models/absensi.dart';
 
 import '../config/api_config.dart';
+import '../models/absensi.dart';
+import '../models/lokasi_absensi.dart';
 import '../network/api_client.dart';
 
-/// services/absensi_service.dart
-///
-/// Fungsi-fungsi terkait absensi yang dipanggil dari screen.
-/// Sama seperti AuthService, screen tidak perlu tahu detail endpoint/JSON.
 class AbsensiService {
   final ApiClient _apiClient;
 
   AbsensiService(this._apiClient);
 
-  /// POST /api/absensi/checkin
-  ///
-  /// `status` WAJIB salah satu dari: 'H' (Hadir), 'I' (Izin), 'S' (Sakit).
-  /// `keterangan` opsional secara backend (validasi wajib/tidak ditangani
-  /// di sisi Flutter/UI, lihat AbsensiDialog).
-  /// `photo` opsional — kalau diisi, otomatis di-encode ke base64 dan
-  /// dikirim sebagai field `foto_base64`. Backend akan menyimpannya
-  /// sebagai file fisik dan path-nya disimpan ke kolom foto_bukti.
   Future<void> checkin({
     required String latitude,
     required String longitude,
@@ -34,8 +24,6 @@ class AbsensiService {
 
     if (photo != null) {
       final bytes = await photo.readAsBytes();
-      // Prefix "data:image/jpeg;base64," dipakai backend untuk deteksi
-      // ekstensi file. ImagePicker dari kamera selalu hasilkan JPEG.
       fotoBase64 = 'data:image/jpeg;base64,${base64Encode(bytes)}';
     }
 
@@ -52,9 +40,6 @@ class AbsensiService {
     );
   }
 
-  /// PUT /api/absensi/checkout
-  /// Backend mewajibkan latitude & longitude BARU (bukan sisa dari checkin).
-  /// Backend juga menolak kalau status absensi hari ini bukan 'H' (Hadir).
   Future<void> checkout({
     required String latitude,
     required String longitude,
@@ -111,4 +96,38 @@ class AbsensiService {
     return response['data']['jam_batas'] as String?;
   }
 
+  Future<List<LokasiAbsensi>> getDaftarLokasi() async {
+    final response = await _apiClient.get(ApiConfig.lokasi, useAuth: true);
+    return (response['data'] as List)
+        .map((item) => LokasiAbsensi.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+    /// GET /api/absensi/lokasi-rumah
+  /// Return null kalau belum pernah diatur.
+  Future<LokasiAbsensi?> getLokasiRumah() async {
+    final response = await _apiClient.get(ApiConfig.lokasiRumah, useAuth: true);
+    final data = response['data'];
+    if (data == null) return null;
+
+    return LokasiAbsensi(
+      id: null,
+      namaLokasi: 'Rumah Saya',
+      latitude: double.parse(data['latitude'].toString()),
+      longitude: double.parse(data['longitude'].toString()),
+      radiusMeter: int.parse(data['radius_meter'].toString()),
+    );
+  }
+
+  /// PUT /api/absensi/lokasi-rumah
+  Future<void> aturLokasiRumah({
+    required String latitude,
+    required String longitude,
+  }) async {
+    await _apiClient.put(
+      ApiConfig.lokasiRumah,
+      body: {'latitude': latitude, 'longitude': longitude},
+      useAuth: true,
+    );
+  }
 }

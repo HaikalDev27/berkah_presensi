@@ -1,15 +1,16 @@
-/// Model sederhana untuk satu baris riwayat absensi.
-/// Nanti field-field ini tinggal disambungkan ke response API backend.
 class Absensi {
   final int idAbsensi;
   final String tanggal;
   final String? masuk;
   final String? keluar;
-  final String absensi; // kode: 'H', 'I', 'S', dst
+  final String absensi; 
   final String? keterangan;
-  final String? fotoBukti; // path relatif, null kalau tidak ada foto
+  final String? fotoBukti;
   final String? longitude;
   final String? latitude;
+  final String statusApproval;
+  final String? catatanApproval;
+  final bool diluarRadius;
 
   const Absensi({
     required this.idAbsensi,
@@ -21,6 +22,9 @@ class Absensi {
     required this.fotoBukti,
     required this.longitude,
     required this.latitude,
+    required this.statusApproval,
+    required this.catatanApproval,
+    required this.diluarRadius,
   });
 
   factory Absensi.fromJson(Map<String, dynamic> json) {
@@ -34,6 +38,9 @@ class Absensi {
       fotoBukti: json['foto_bukti'] as String?,
       longitude: json['longitude'] as String?,
       latitude: json['latitude'] as String?,
+      statusApproval: (json['status_approval'] as String?) ?? 'pending',
+      catatanApproval: json['catatan_approval'] as String?,
+      diluarRadius: (json['diluar_radius'] as bool?) ?? false,
     );
   }
 
@@ -48,6 +55,9 @@ class Absensi {
       'foto_bukti': fotoBukti,
       'longitude': longitude,
       'latitude': latitude,
+      'status_approval': statusApproval,
+      'catatan_approval': catatanApproval,
+      'diluar_radius': diluarRadius,
     };
   }
 
@@ -69,6 +79,16 @@ class Absensi {
         return absensi;
     }
   }
+
+  String get approvalLabel {
+    switch (statusApproval) {
+      case 'approved':
+        return 'Disetujui';
+      case 'rejected':
+        return 'Ditolak';
+      case 'pending':
+      default:
+        return 'Menunggu Persetujuan';
+    }
+  }
 }
-
-

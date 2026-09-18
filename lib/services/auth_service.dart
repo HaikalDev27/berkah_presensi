@@ -91,6 +91,22 @@ class AuthService {
     );
   }
 
+  Future<void> signUp({
+    required String nik,
+    required String username,
+    required String password,
+  }) async {
+    await _apiClient.post(
+      ApiConfig.signUp,
+      body: {
+        'nik': nik,
+        'username': username,
+        'password': password,
+      },
+      useAuth: false,
+    );
+  }
+
   /// Langkah terakhir alur "Lupa Password": set password baru pakai
   /// [resetToken] yang didapat dari FaceVerificationService.verifyForForgotPassword.
   ///
