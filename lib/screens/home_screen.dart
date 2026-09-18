@@ -27,12 +27,19 @@ import 'package:geolocator/geolocator.dart';
 import '../models/lokasi_absensi.dart';
 import '../widgets/lokasi_confirm_dialog.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _PosisiTerverifikasi {
+  final Position position;
+  final bool perluFotoBukti; // true = di luar radius & sudah dikonfirmasi user
+  const _PosisiTerverifikasi(this.position, this.perluFotoBukti);
 }
 
 class _HomeScreenState extends State<HomeScreen> {
@@ -374,21 +381,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// Panggil API absensi sesungguhnya (checkin/checkout), termasuk
-  /// mengambil lokasi GPS device dulu. Melempar Exception/ApiException
-  /// kalau gagal (ditangkap oleh pemanggil di atas).
-  Future<void> _kirimAbsensiKeServer({
-    required bool isCheckIn,
-    required String status,
-    required String comment,
-    File? photo,
-  }) async {
-    final daftarLokasi = await _absensiService.getDaftarLokasi();
 
-    final position = await _dapatkanPosisiTerverifikasi(daftarLokasi);
 
-    final latitude = position.latitude.toString();
-    final longitude = position.longitude.toString();
+Future<_PosisiTerverifikasi> _dapatkanPosisiTerverifikasi(
+  List<LokasiAbsensi> daftarLokasi,
+) async {
+  while (true) {
+    final position = await LocationHelper.getCurrentPosition();
 
     final dalamRadius = daftarLokasi.any((lok) {
       final jarak = Geolocator.distanceBetween(
@@ -398,74 +397,100 @@ class _HomeScreenState extends State<HomeScreen> {
       return jarak <= lok.radiusMeter;
     });
 
-    File? fotoFinal = photo;
-
-    if (!dalamRadius && fotoFinal == null) {
-      final picker = ImagePicker();
-      final XFile? diambil = await picker.pickImage(
-        source: ImageSource.camera,
-        imageQuality: 70,
-      );
-
-      if (diambil == null) {
-        throw Exception('Foto bukti wajib dilampirkan untuk absen di luar radius lokasi resmi');
-      }
-      fotoFinal = File(diambil.path);
+    if (dalamRadius) {
+      return _PosisiTerverifikasi(position, false);
     }
 
-    if (isCheckIn) {
-      final statusCode = _mapStatusLabelToCode(status);
+    if (!mounted) throw Exception('Dibatalkan');
 
-      await _absensiService.checkin(
-        latitude: position.latitude.toString(),
-        longitude: position.longitude.toString(),
-        status: _mapStatusLabelToCode(status),
-        keterangan: comment.trim().isNotEmpty ? comment.trim() : null,
-        photo: fotoFinal,
-      );
-    } else {
-      // Checkout tidak butuh status/comment/photo — backend cuma
-      // butuh lat/long, dan akan menolak sendiri kalau status hari ini
-      // bukan Hadir (lihat guard baru di AbsensiController::checkout()).
-      await _absensiService.checkout(
-        latitude: latitude,
-        longitude: longitude,
+    final dikonfirmasi = await LokasiConfirmDialog.show(
+      context,
+      posisiSaatIni: position,
+      daftarLokasi: daftarLokasi,
+    );
+
+    if (dikonfirmasi) {
+      // Kasih jeda sebentar biar dialog benar-benar selesai ditutup
+      // (animasi pop selesai) sebelum kita buka kamera. Tanpa ini,
+      // image_picker sering gagal buka & balikin null diam-diam.
+      await Future.delayed(const Duration(milliseconds: 300));
+      return _PosisiTerverifikasi(position, true);
+    }
+    // "Bukan, Coba Lagi" -> loop lagi, ambil GPS baru
+  }
+}
+
+Future<void> _kirimAbsensiKeServer({
+  required bool isCheckIn,
+  required String status,
+  required String comment,
+  File? photo,
+}) async {
+  final daftarLokasi = await _absensiService.getDaftarLokasi();
+  final hasil = await _dapatkanPosisiTerverifikasi(daftarLokasi);
+  final position = hasil.position;
+
+  File? fotoFinal = photo;
+
+  if (hasil.perluFotoBukti && fotoFinal == null) {
+    fotoFinal = await _ambilFotoBukti();
+    if (fotoFinal == null) {
+      throw Exception(
+        'Foto bukti wajib dilampirkan untuk absen di luar radius lokasi resmi',
       );
     }
   }
 
-  Future<Position> _dapatkanPosisiTerverifikasi(
-    List<LokasiAbsensi> daftarLokasi,
-  ) async {
-    while (true) {
-      final position = await LocationHelper.getCurrentPosition();
-
-      final dalamRadius = daftarLokasi.any((lok) {
-        final jarak = Geolocator.distanceBetween(
-          position.latitude, position.longitude,
-          lok.latitude, lok.longitude,
-        );
-        return jarak <= lok.radiusMeter;
-      });
-
-      if (dalamRadius) {
-        return position; // lokasi valid, tidak perlu konfirmasi apa pun
-      }
-
-      if (!mounted) throw Exception('Dibatalkan');
-
-      final dikonfirmasi = await LokasiConfirmDialog.show(
-        context,
-        posisiSaatIni: position,
-        daftarLokasi: daftarLokasi,
-      );
-
-      if (dikonfirmasi) {
-        return position; // user konfirmasi ini memang lokasinya
-      }
-      // kalau "Bukan, Coba Lagi" -> loop lagi, ambil GPS baru
-    }
+  if (isCheckIn) {
+    await _absensiService.checkin(
+      latitude: position.latitude.toString(),
+      longitude: position.longitude.toString(),
+      status: _mapStatusLabelToCode(status),
+      keterangan: comment.trim().isNotEmpty ? comment.trim() : null,
+      photo: fotoFinal,
+    );
+  } else {
+    await _absensiService.checkout(
+      latitude: position.latitude.toString(),
+      longitude: position.longitude.toString(),
+    );
   }
+}
+
+Future<File?> _ambilFotoBukti() async {
+  // Minta izin kamera EKSPLISIT dulu. Kalau nggak dicek manual,
+  // di sebagian device pickImage() cuma balikin null diam-diam
+  // kalau izin belum ada / pernah ditolak — user nggak pernah lihat
+  // prompt apapun, persis gejala yang kamu alami.
+  final permStatus = await Permission.camera.request();
+  if (!permStatus.isGranted) {
+    if (!mounted) return null;
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Izin Kamera Dibutuhkan'),
+        content: const Text(
+          'Aplikasi butuh akses kamera untuk mengambil foto bukti lokasi. '
+          'Aktifkan izin kamera di Pengaturan aplikasi.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+    return null;
+  }
+
+  final picker = ImagePicker();
+  final XFile? diambil = await picker.pickImage(
+    source: ImageSource.camera,
+    imageQuality: 70,
+  );
+  return diambil == null ? null : File(diambil.path);
+}
 
   @override
   Widget build(BuildContext context) {
