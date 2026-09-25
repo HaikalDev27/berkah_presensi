@@ -35,6 +35,9 @@ class _SignInScreenState extends State<SignInScreen> {
 
   bool _isLoading = false;
 
+  // --- Biometric login (baru) ---
+  String? _biometricUsername; // null = belum ada binding fingerprint di device ini
+
   @override
   void dispose() {
     _usernameCtrl.dispose();
@@ -46,6 +49,7 @@ class _SignInScreenState extends State<SignInScreen> {
   void initState() {
     super.initState();
     _checkForUpdate();
+    _checkBiometricLogin();
   }
 
   Future<void> _checkForUpdate() async {
@@ -57,6 +61,48 @@ class _SignInScreenState extends State<SignInScreen> {
     } catch (_) {
       // Gagal cek update (misal tidak ada koneksi) — abaikan diam-diam.
     }
+  }
+
+  /// Cek apakah device ini sudah punya binding fingerprint ke suatu akun.
+  /// Tidak menampilkan prompt fingerprint — cuma baca metadata lokal.
+  Future<void> _checkBiometricLogin() async {
+    final username = await _authService.peekBiometricUsername();
+    if (!mounted) return;
+    setState(() => _biometricUsername = username);
+  }
+
+  Future<void> _handleBiometricLogin() async {
+    LoadingDialog.show(context);
+
+    LoginResponse? loginResponse;
+    String? errorMessage;
+
+    try {
+      loginResponse = await _authService.loginWithBiometric();
+    } on ApiException catch (e) {
+      errorMessage = e.message;
+    } catch (e) {
+      errorMessage = e.toString().replaceFirst('Exception: ', '');
+    }
+
+    if (!mounted) return;
+    LoadingDialog.hide(context);
+
+    if (loginResponse == null) {
+      // Refresh status tombol (mungkin binding baru saja dimatikan otomatis
+      // karena token sudah tidak valid di server).
+      await _checkBiometricLogin();
+      if (!mounted) return;
+      StatusDialog.show(
+        context,
+        isSuccess: false,
+        title: 'Login Gagal',
+        message: errorMessage ?? 'Terjadi kesalahan, coba lagi.',
+      );
+      return;
+    }
+
+    await _afterLoginSuccess(loginResponse, offerEnableBiometric: false);
   }
 
   InputDecoration _inputDecoration(String hint, {Widget? suffixIcon}) {
@@ -84,23 +130,13 @@ class _SignInScreenState extends State<SignInScreen> {
     LoadingDialog.show(context);
 
     try {
-      await _authService.login(
+      final loginResponse = await _authService.login(
         _usernameCtrl.text.trim(),
         _passwordCtrl.text,
       );
 
       if (!mounted) return;
-
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainNavigation()),
-      );
-      await FirebaseMessaging.instance.requestPermission();
-
-      final fcmToken = await FirebaseMessaging.instance.getToken();
-      if (fcmToken != null) {
-        final notifikasiService = NotifikasiService(_apiClient);
-        await notifikasiService.registerDeviceToken(fcmToken);
-      }
+      await _afterLoginSuccess(loginResponse, offerEnableBiometric: true);
     } on ApiException catch (e) {
       if (!mounted) return;
       StatusDialog.show(
@@ -112,9 +148,91 @@ class _SignInScreenState extends State<SignInScreen> {
           Navigator.of(context).pop();
         },
       );
-      print('Gagal registrasi device token: $e');
+      print('Gagal login: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  /// Dipanggil setelah login berhasil, baik lewat password maupun
+  /// fingerprint. Menangani: tawaran aktivasi biometric login (kalau
+  /// relevan), registrasi FCM token, dan navigasi ke home.
+  Future<void> _afterLoginSuccess(
+    LoginResponse loginResponse, {
+    required bool offerEnableBiometric,
+  }) async {
+    if (offerEnableBiometric) {
+      await _maybeOfferEnableBiometric(loginResponse);
+      if (!mounted) return;
+    }
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const MainNavigation()),
+    );
+
+    try {
+      await FirebaseMessaging.instance.requestPermission();
+      final fcmToken = await FirebaseMessaging.instance.getToken();
+      if (fcmToken != null) {
+        final notifikasiService = NotifikasiService(_apiClient);
+        await notifikasiService.registerDeviceToken(fcmToken);
+      }
+    } catch (e) {
+      print('Gagal registrasi device token: $e');
+    }
+  }
+
+  /// Tawarkan aktivasi biometric login setelah login manual berhasil.
+  /// Dilewati kalau device tidak punya sensor / belum ada fingerprint
+  /// terdaftar di HP (supaya tidak menawarkan sesuatu yang pasti gagal).
+  Future<void> _maybeOfferEnableBiometric(LoginResponse loginResponse) async {
+    final alreadyEnabled = await _authService.isBiometricLoginEnabled();
+    final currentBiometricUsername = await _authService.peekBiometricUsername();
+
+    final isDifferentAccount = alreadyEnabled &&
+        currentBiometricUsername != null &&
+        currentBiometricUsername != loginResponse.user.username;
+
+    if (!mounted) return;
+
+    // Kalau device ini sudah bind ke akun yang SAMA, tidak perlu tanya lagi.
+    if (alreadyEnabled && !isDifferentAccount) return;
+
+    final mauAktifkan = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Aktifkan Login Fingerprint?'),
+        content: Text(
+          isDifferentAccount
+              ? 'Device ini sebelumnya terhubung dengan akun lain. '
+                'Lanjutkan akan menggantinya dengan akun ini.'
+              : 'Lain kali Anda bisa login lebih cepat pakai fingerprint/Face ID.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Nanti Saja'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Aktifkan'),
+          ),
+        ],
+      ),
+    );
+
+    if (mauAktifkan != true) return;
+
+    final result = await _authService.enableBiometricLogin(loginResponse);
+
+    if (!mounted) return;
+
+    if (!result.success) {
+      // Gagal aktifkan (misal user batalkan prompt) bukan error fatal —
+      // login tetap lanjut seperti biasa, cukup kasih tahu lewat SnackBar.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.errorMessage ?? 'Gagal mengaktifkan fingerprint.')),
+      );
     }
   }
 
@@ -154,6 +272,34 @@ class _SignInScreenState extends State<SignInScreen> {
                       child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (_biometricUsername != null) ...[
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.fingerprint),
+                            label: Text('Login sebagai $_biometricUsername'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                            ),
+                            onPressed: _handleBiometricLogin,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        Row(
+                          children: const [
+                            Expanded(child: Divider()),
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 12),
+                              child: Text('atau login manual'),
+                            ),
+                            Expanded(child: Divider()),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                      ],
                       const Text('Username', style: TextStyle(fontSize: 16)),
                       const SizedBox(height: 8),
                       TextField(

@@ -1,9 +1,11 @@
 import '../config/api_config.dart';
 import '../models/login_response.dart';
 import '../network/api_client.dart';
+import '../network/api_exception.dart';
 import '../session/session_manager.dart';
 import '../models/user_model.dart';
 import '../models/absensi.dart';
+import 'biometric_login_service.dart';
 
 /// services/auth_service.dart
 ///
@@ -41,6 +43,91 @@ class AuthService {
     await _sessionManager.saveSession(loginResponse.token, loginResponse.user);
 
     return loginResponse;
+  }
+
+  Future<String> checkNik(String nik) async {
+    final response = await _apiClient.post(
+      ApiConfig.checkNik,
+      body: {'nik': nik},
+      useAuth: false,
+    );
+ 
+    final data = response['data'] as Map<String, dynamic>?;
+    return (data?['nama'] as String?) ?? '';
+  }
+ 
+
+  // ===========================================================
+  // BIOMETRIC LOGIN (baru)
+  // ===========================================================
+
+  /// Intip username yang ter-bind fingerprint di device ini, tanpa prompt.
+  /// Dipakai LoginScreen untuk menampilkan tombol "Login sebagai [username]".
+  Future<String?> peekBiometricUsername() {
+    return BiometricLoginService.peekUsername();
+  }
+
+  Future<bool> isBiometricLoginEnabled() {
+    return BiometricLoginService.isEnabled();
+  }
+
+  /// Aktifkan biometric login untuk akun yang BARU SAJA login manual.
+  /// Panggil ini setelah `login()` di atas sukses, bukan sebagai
+  /// pengganti login pertama kali.
+  Future<BiometricEnableResult> enableBiometricLogin(
+    LoginResponse loginResponse,
+  ) {
+    return BiometricLoginService.enable(loginResponse);
+  }
+
+  /// Nonaktifkan biometric login di device ini.
+  Future<void> disableBiometricLogin() {
+    return BiometricLoginService.disable();
+  }
+
+  /// Login pakai fingerprint/Face ID.
+  ///
+  /// Alur: buka snapshot token tersimpan via BiometricLoginService.login()
+  /// (ini yang menampilkan prompt fingerprint) -> lalu VALIDASI ULANG token
+  /// itu ke server lewat GET /me (getProfile). Ini penting supaya:
+  ///  - token yang sudah di-revoke/expired di server tidak dianggap valid
+  ///    hanya karena tersimpan lokal.
+  ///  - data user (nama, jabatan, wajah_terdaftar, dst) selalu fresh, bukan
+  ///    snapshot lama saat enable() dulu dipanggil.
+  ///
+  /// Kalau validasi ke server gagal karena token sudah tidak valid,
+  /// binding fingerprint di device ini otomatis dimatikan supaya user
+  /// tidak stuck mencoba fingerprint yang tidak akan pernah berhasil lagi,
+  /// dan harus login manual.
+  Future<LoginResponse> loginWithBiometric() async {
+    final result = await BiometricLoginService.login();
+
+    if (!result.success || result.loginResponse == null) {
+      throw ApiException(
+        result.errorMessage ?? 'Login fingerprint gagal, silakan login manual.',
+      );
+    }
+
+    final localLoginResponse = result.loginResponse!;
+
+    // Simpan sementara ke SessionManager supaya ApiClient bisa memakai
+    // token ini untuk memanggil endpoint /me (butuh useAuth: true).
+    await _sessionManager.saveSession(
+      localLoginResponse.token,
+      localLoginResponse.user,
+    );
+
+    try {
+      final freshUser = await getProfile();
+      return LoginResponse(token: localLoginResponse.token, user: freshUser);
+    } on ApiException {
+      // Token lokal ternyata sudah tidak valid di server (401/expired/dsb).
+      await _sessionManager.clearSession();
+      await BiometricLoginService.disable();
+      throw ApiException(
+        'Sesi fingerprint sudah tidak berlaku, silakan login manual.',
+      );
+    }
   }
 
   Future<UserModel> getProfile() async {
@@ -130,6 +217,11 @@ class AuthService {
   /// Logout: cukup hapus sesi lokal.
   /// (Backend memakai JWT stateless — tidak ada endpoint logout di server,
   /// karena tidak ada tabel token/session yang perlu dihapus di database.)
+  ///
+  /// Catatan: TIDAK otomatis mematikan biometric login di device ini,
+  /// supaya user yang sama bisa langsung pakai fingerprint lagi saat
+  /// login berikutnya. Kalau butuh tombol "Logout & matikan fingerprint",
+  /// panggil disableBiometricLogin() secara terpisah dari UI.
   Future<void> logout() async {
     await _sessionManager.clearSession();
   }

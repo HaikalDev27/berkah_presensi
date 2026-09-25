@@ -20,6 +20,7 @@ class ApiConfig {
   static String get me => '/auth/me';
   static String get changePassword => '/auth/change-password';
   static String get signUp => '/auth/signup';
+  static String get checkNik => '/auth/check-nik';
   static String get forgotPasswordVerify => '/auth/forgot-password/verify';
   static String get forgotPasswordReset => '/auth/forgot-password/reset';
 
