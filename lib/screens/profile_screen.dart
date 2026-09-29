@@ -117,7 +117,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     final File? fotoWajah = await Navigator.of(context).push<File?>(
-      MaterialPageRoute(builder: (_) => const FaceCaptureScreen()),
+      MaterialPageRoute(
+        builder: (_) => const FaceCaptureScreen(requireLiveness: true),
+      ),
     );
 
     if (!context.mounted) return;
