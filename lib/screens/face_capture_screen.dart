@@ -11,15 +11,28 @@ import '../theme/app_theme.dart';
 enum _HeadPose { left, right, center }
 
 /// Layar kamera khusus untuk ambil foto wajah sebelum absen dikirim.
-/// Selalu pakai kamera depan. User diminta mengikuti instruksi gerakan
-/// kepala secara acak (liveness check) sebelum foto diambil otomatis —
-/// ini mencegah orang memakai foto/video orang lain untuk absen.
+/// Selalu pakai kamera depan, dan foto SELALU diambil otomatis begitu
+/// wajah terdeteksi stabil di depan kamera — tidak ada tombol jepret
+/// manual sama sekali.
+///
+/// Ada 2 mode (lihat [requireLiveness]):
+///  - liveness (dipakai saat daftar/update wajah): user harus mengikuti
+///    instruksi tengok kiri lalu kanan dulu sebelum foto diambil,
+///    mencegah orang memakai foto/video orang lain untuk mendaftar.
+///  - biasa (dipakai saat absen): tidak ada instruksi gerakan, foto
+///    otomatis diambil begitu 1 wajah terdeteksi stabil menghadap depan.
 ///
 /// Setelah foto diambil dan dikonfirmasi user, layar ini ditutup dan
 /// mengembalikan `File` foto lewat Navigator.pop().
 /// Return `null` kalau user membatalkan (tekan tombol back / silang).
 class FaceCaptureScreen extends StatefulWidget {
-  const FaceCaptureScreen({super.key});
+  /// `true`  -> mode liveness: instruksi tengok kiri/kanan dulu, baru foto
+  ///            diambil otomatis. Dipakai saat DAFTAR/UPDATE wajah.
+  /// `false` -> mode biasa: tanpa instruksi gerakan, foto otomatis
+  ///            diambil begitu wajah terdeteksi stabil. Dipakai saat absen.
+  final bool requireLiveness;
+
+  const FaceCaptureScreen({super.key, this.requireLiveness = false});
 
   @override
   State<FaceCaptureScreen> createState() => _FaceCaptureScreenState();
@@ -35,6 +48,8 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
   final FaceDetector _faceDetector = FaceDetector(
     options: FaceDetectorOptions(performanceMode: FaceDetectorMode.fast),
   );
+
+  bool get _liveness => widget.requireLiveness;
 
   // ---- State liveness detection ----
   late List<_HeadPose> _challenges; // urutan instruksi, diacak tiap sesi
@@ -109,6 +124,9 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
       await _initializeFuture;
       if (!mounted) return;
       setState(() {});
+      // Kedua mode butuh deteksi wajah real-time: mode liveness untuk
+      // mengevaluasi instruksi tengok kiri/kanan, mode biasa untuk
+      // menentukan kapan wajah sudah stabil dan foto bisa diambil sendiri.
       await _controller!.startImageStream(_onFrame);
     } catch (e) {
       setState(() {
@@ -146,7 +164,11 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
       }
 
       _updateHint(null);
-      _evaluateChallenge(faces.first);
+      if (_liveness) {
+        _evaluateChallenge(faces.first);
+      } else {
+        _evaluateAutoCapture(faces.first);
+      }
     } catch (_) {
       // Abaikan error di 1 frame, biarkan dicoba lagi di frame berikutnya.
     }
@@ -221,9 +243,28 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
 
   void _advanceChallenge() {
     if (_currentStep >= _challenges.length - 1) {
-      _captureAfterLiveness();
+      _triggerAutoCapture();
     } else {
       if (mounted) setState(() => _currentStep++);
+    }
+  }
+
+  /// Mode biasa (absen): tidak ada instruksi gerakan, cukup pastikan
+  /// wajah menghadap relatif ke depan (bukan pas kepala nengok/miring
+  /// jauh saat fotonya diambil) dan stabil selama beberapa frame
+  /// berturut-turut, baru foto diambil sendiri.
+  void _evaluateAutoCapture(Face face) {
+    final yaw = face.headEulerAngleY ?? 0;
+    final passed = yaw.abs() <= _centerTolerance;
+
+    if (passed) {
+      _consecutivePass++;
+      if (_consecutivePass >= _requiredConsecutiveFrames) {
+        _consecutivePass = 0;
+        _triggerAutoCapture();
+      }
+    } else {
+      _consecutivePass = 0;
     }
   }
 
@@ -232,7 +273,7 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
     if (_hintMessage != message) setState(() => _hintMessage = message);
   }
 
-  Future<void> _captureAfterLiveness() async {
+  Future<void> _triggerAutoCapture() async {
     if (_isCapturing || _controller == null) return;
     setState(() => _isCapturing = true);
     try {
@@ -455,14 +496,15 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
                 onTap: () => Navigator.of(context).pop(null),
               ),
             ),
-            Positioned(
-              top: 16,
-              right: 16,
-              child: _StepIndicator(
-                total: _challenges.length,
-                current: _currentStep,
+            if (_liveness)
+              Positioned(
+                top: 16,
+                right: 16,
+                child: _StepIndicator(
+                  total: _challenges.length,
+                  current: _currentStep,
+                ),
               ),
-            ),
             Positioned(
               bottom: 16,
               left: 0,
@@ -470,12 +512,19 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
               child: Column(
                 children: [
                   if (_hintMessage == null) ...[
-                    Icon(_iconForChallenge(currentChallenge),
-                        color: Colors.white, size: 32),
+                    Icon(
+                        _liveness
+                            ? _iconForChallenge(currentChallenge)
+                            : Icons.face_retouching_natural,
+                        color: Colors.white,
+                        size: 32),
                     const SizedBox(height: 8),
                   ],
                   Text(
-                    _hintMessage ?? _instructionForChallenge(currentChallenge),
+                    _hintMessage ??
+                        (_liveness
+                            ? _instructionForChallenge(currentChallenge)
+                            : 'Posisikan wajah di dalam bingkai'),
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: Colors.white,
@@ -487,9 +536,12 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
                   if (_isCapturing)
                     const CircularProgressIndicator(color: Colors.white)
                   else
-                    const Text(
-                      'Verifikasi otomatis — ikuti instruksi di atas',
-                      style: TextStyle(color: Colors.white60, fontSize: 12),
+                    Text(
+                      _liveness
+                          ? 'Verifikasi otomatis — ikuti instruksi di atas'
+                          : 'Tetap diam sebentar, foto diambil otomatis',
+                      style:
+                          const TextStyle(color: Colors.white60, fontSize: 12),
                     ),
                   const SizedBox(height: 24),
                 ],
