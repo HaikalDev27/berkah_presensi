@@ -19,6 +19,7 @@ import '../utils/location_helper.dart';
 import '../services/camera_permission_service.dart';
 import '../services/face_verification_service.dart';
 import '../services/face_embedding_service.dart';
+import '../models/face_kuota.dart';
 import 'face_capture_screen.dart';
 import '../models/absensi.dart';
 import '../services/update_service.dart';
@@ -53,6 +54,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String? _checkInTime;
   String? _checkOutTime;
+
+  // True kalau check-in kali ini memakai foto bukti identitas (kuota wajah habis).
+  bool _absenDenganBukti = false;
 
   @override
   void initState() {
@@ -148,7 +152,69 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Return true kalau wajah cocok & boleh lanjut absen, false kalau
   /// gagal/dibatalkan di titik mana pun (StatusDialog sudah ditampilkan
   /// otomatis di dalam sini kalau gagal, kecuali user membatalkan).
-  Future<bool> _verifyFace() async {
+  ///
+  /// [untukCheckin] = true: kuota percobaan 3x berlaku (dihitung di server).
+  /// Setelah gagal 3x user wajib mengirim foto bukti identitas untuk
+  /// direview admin. Check-out memakai nilai default (false) dan tidak
+  /// berubah sama sekali.
+  Future<bool> _verifyFace({bool untukCheckin = false}) async {
+    // [BARU] Khusus Check-in: cek kuota di server dulu. Hitungannya
+    // disimpan server, jadi tetap berlaku walau app ditutup lalu dibuka lagi.
+    if (untukCheckin) {
+      LoadingDialog.show(context);
+
+      FaceKuota kuotaAwal;
+      try {
+        kuotaAwal = await _faceVerificationService.getKuota();
+      } on ApiException catch (e) {
+        if (!context.mounted) return false;
+        LoadingDialog.hide(context);
+        StatusDialog.show(
+          context,
+          isSuccess: false,
+          title: 'Attendence Failed!!!',
+          message: 'Gagal memeriksa status verifikasi wajah: ${e.message}',
+        );
+        return false;
+      }
+
+      if (!context.mounted) return false;
+      LoadingDialog.hide(context);
+
+      if (kuotaAwal.habis) {
+        if (kuotaAwal.buktiSudahAda) {
+          // Foto bukti sudah pernah dikirim hari ini → langsung lanjut absen.
+          _absenDenganBukti = true;
+          return true;
+        }
+
+        await StatusDialog.show(
+          context,
+          isSuccess: false,
+          title: 'Verifikasi Wajah Gagal',
+          message: 'Verifikasi wajah sudah gagal ${kuotaAwal.maks} kali. '
+              'Kirim foto bukti identitas untuk melanjutkan absen.',
+        );
+        if (!context.mounted) return false;
+        return _kirimFotoBukti();
+      }
+
+      // Foto bukti sebelumnya ditolak admin → kasih tahu alasannya sekali,
+      // sebelum kesempatan baru dipakai.
+      if (kuotaAwal.gagal == 0 && kuotaAwal.statusBukti == 'ditolak') {
+        final alasan = (kuotaAwal.catatanAdmin ?? '').trim();
+        await StatusDialog.show(
+          context,
+          isSuccess: false,
+          title: 'Foto Bukti Ditolak',
+          message: 'Foto bukti Anda sebelumnya ditolak admin'
+              '${alasan.isNotEmpty ? ': $alasan' : '.'} '
+              'Anda mendapat ${kuotaAwal.maks} kesempatan verifikasi wajah lagi.',
+        );
+        if (!context.mounted) return false;
+      }
+    }
+
     // a. Minta izin kamera dulu.
     final bool izinKamera = await CameraPermissionService.request();
     if (!context.mounted) return false;
@@ -185,9 +251,14 @@ class _HomeScreenState extends State<HomeScreen> {
     LoadingDialog.show(context);
 
     bool cocok;
+    FaceKuota? kuota;
     try {
-      final hasil = await _faceVerificationService.verify(fotoWajah);
+      final hasil = await _faceVerificationService.verify(
+        fotoWajah,
+        untukCheckin: untukCheckin,
+      );
       cocok = hasil.match;
+      kuota = hasil.kuota;
     } on FaceEmbeddingException catch (e) {
       if (!context.mounted) return false;
       LoadingDialog.hide(context);
@@ -214,16 +285,109 @@ class _HomeScreenState extends State<HomeScreen> {
     LoadingDialog.hide(context);
 
     if (!cocok) {
+      // [BARU] Check-in: tampilkan sisa kesempatan, atau minta foto bukti
+      // kalau kuota baru saja habis.
+      if (untukCheckin && kuota != null) {
+        if (kuota.habis) {
+          await StatusDialog.show(
+            context,
+            isSuccess: false,
+            title: 'Verifikasi Wajah Gagal',
+            message: 'Wajah tidak cocok ${kuota.maks} kali. Kirim foto bukti '
+                'identitas untuk melanjutkan absen, foto akan ditinjau admin.',
+          );
+          if (!context.mounted) return false;
+          return _kirimFotoBukti();
+        }
+
+        StatusDialog.show(
+          context,
+          isSuccess: false,
+          title: 'Attendence Failed!!!',
+          message: 'Wajah tidak cocok dengan data karyawan terdaftar. '
+              'Kesempatan tersisa ${kuota.sisa} dari ${kuota.maks}. '
+              'Coba di tempat yang lebih terang dan hadap kamera lurus.',
+        );
+        return false;
+      }
+
       StatusDialog.show(
         context,
         isSuccess: false,
         title: 'Attendence Failed!!!',
         message: 'Wajah tidak cocok dengan data karyawan terdaftar. '
-            'Mohon coba lagi.',
+            'Mohon coba lagi di tempat yang lebih terang dan hadap kamera lurus.',
       );
       return false;
     }
 
+    return true;
+  }
+
+  /// [BARU] Ambil foto bukti identitas (kamera depan saja, tanpa galeri;
+  /// ada preview dan tombol foto ulang di FaceCaptureScreen) lalu kirim ke
+  /// server untuk direview admin.
+  ///
+  /// Return true kalau foto berhasil terkirim, supaya check-in bisa lanjut
+  /// (check-in tetap berstatus pending sampai admin memutuskan).
+  Future<bool> _kirimFotoBukti() async {
+    final bool izinKamera = await CameraPermissionService.request();
+    if (!context.mounted) return false;
+
+    if (!izinKamera) {
+      StatusDialog.show(
+        context,
+        isSuccess: false,
+        title: 'Attendence Failed!!!',
+        message: 'Izin kamera dibutuhkan untuk mengambil foto bukti.',
+      );
+      return false;
+    }
+
+    final File? foto = await Navigator.of(context).push<File?>(
+      MaterialPageRoute(builder: (_) => const FaceCaptureScreen()),
+    );
+    if (!context.mounted) return false;
+
+    if (foto == null) {
+      StatusDialog.show(
+        context,
+        isSuccess: false,
+        title: 'Foto Bukti Diperlukan',
+        message: 'Absen Hadir tidak bisa dilanjutkan tanpa foto bukti '
+            'identitas. Silakan coba lagi.',
+      );
+      return false;
+    }
+
+    LoadingDialog.show(context);
+    try {
+      await _faceVerificationService.kirimBukti(foto);
+    } on ApiException catch (e) {
+      if (!context.mounted) return false;
+      LoadingDialog.hide(context);
+      StatusDialog.show(
+        context,
+        isSuccess: false,
+        title: 'Attendence Failed!!!',
+        message: 'Gagal mengirim foto bukti: ${e.message}',
+      );
+      return false;
+    } catch (_) {
+      if (!context.mounted) return false;
+      LoadingDialog.hide(context);
+      StatusDialog.show(
+        context,
+        isSuccess: false,
+        title: 'Attendence Failed!!!',
+        message: 'Gagal mengirim foto bukti, silakan coba lagi.',
+      );
+      return false;
+    }
+
+    if (!context.mounted) return false;
+    LoadingDialog.hide(context);
+    _absenDenganBukti = true;
     return true;
   }
 
@@ -241,6 +405,8 @@ class _HomeScreenState extends State<HomeScreen> {
       context,
       batasWaktu: batasWaktu,
       onConfirm: (status, comment, photo) async {
+        _absenDenganBukti = false;
+
         final terverifikasi = await _verifyBiometric(
           reason: 'Verifikasi identitas untuk Check In',
         );
@@ -251,7 +417,7 @@ class _HomeScreenState extends State<HomeScreen> {
         // wajah yang perlu dicocokkan. Fingerprint di atas tetap jalan
         // supaya identitas pengirim izin/sakit tetap terverifikasi.
         if (status == 'Hadir') {
-          final wajahCocok = await _verifyFace();
+          final wajahCocok = await _verifyFace(untukCheckin: true);
           if (!context.mounted || !wajahCocok) return;
         }
 
@@ -288,7 +454,10 @@ class _HomeScreenState extends State<HomeScreen> {
             context,
             isSuccess: true,
             title: 'Attendence Succesfull!',
-            message: 'Terimakasih sudah mengirim absen anda!',
+            message: _absenDenganBukti
+                ? 'Absen terkirim. Foto bukti identitas Anda menunggu '
+                    'persetujuan admin.'
+                : 'Terimakasih sudah mengirim absen anda!',
           );
         } else {
           StatusDialog.show(

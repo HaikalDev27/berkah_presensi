@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -66,6 +67,26 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
   // berikutnya. Ini buat jaga-jaga dari gerakan sekilas/jitter kamera,
   // bukan gerakan yang benar-benar disengaja ikutin instruksi.
   static const int _requiredConsecutiveFrames = 5;
+
+  // [BARU] Batas kecerahan minimal frame kamera (skala 0 = hitam .. 255 =
+  // putih). Di bawah ini foto dianggap terlalu gelap untuk dicocokkan.
+  // PERLU DITES di HP asli: kalau terlalu sering muncul peringatan padahal
+  // ruangan cukup terang, turunkan angkanya; kalau foto gelap masih lolos,
+  // naikkan.
+  static const double _minBrightness = 60.0;
+
+  // [BARU] Bingkai oval di layar (HARUS sama dengan ukuran Container oval
+  // di _buildCameraView) dan batas ukuran wajah relatif terhadap bingkai.
+  // PERLU DITES di HP asli, sesuaikan angkanya kalau terlalu ketat/longgar.
+  static const double _frameWidth = 240;
+  static const double _frameHeight = 300;
+  static const double _minFaceToFrame = 0.55; // wajah < 55% lebar bingkai = terlalu jauh
+  static const double _maxFaceToFrame = 1.0; // wajah > lebar bingkai = terlalu dekat
+  static const double _frameTolerance = 10; // toleransi (px) wajah menyentuh tepi bingkai
+
+  // Ukuran area kamera di layar, diisi saat build (dipakai memetakan posisi
+  // wajah dari koordinat gambar kamera ke koordinat layar).
+  Size? _areaSize;
 
   // PENTING — perlu dites di HP asli: ML Kit mengembalikan
   // `headEulerAngleY` positif/negatif tergantung arah hadap, tapi kamera
@@ -145,6 +166,17 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
   }
 
   Future<void> _detectFace(CameraImage image) async {
+    // [BARU] Terlalu gelap -> jangan lanjut deteksi/auto-capture. Foto gelap
+    // hampir pasti gagal dicocokkan, jadi lebih baik minta user pindah ke
+    // tempat yang lebih terang. Ini terjadi SEBELUM foto diambil, jadi tidak
+    // dihitung sebagai percobaan verifikasi wajah.
+    final kecerahan = _measureBrightness(image);
+    if (kecerahan != null && kecerahan < _minBrightness) {
+      _consecutivePass = 0;
+      _updateHint('Pencahayaan kurang, pindah ke tempat yang lebih terang');
+      return;
+    }
+
     final inputImage = _buildInputImage(image);
     if (inputImage == null) return;
 
@@ -163,15 +195,113 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
         return;
       }
 
-      _updateHint(null);
       if (_liveness) {
+        _updateHint(null);
         _evaluateChallenge(faces.first);
       } else {
+        // [BARU] Foto hanya diambil kalau wajah benar-benar sudah di dalam
+        // bingkai (ukuran dan posisinya pas). Kalau belum, tampilkan petunjuk
+        // dan hitungan stabil diulang dari nol.
+        final petunjukPosisi = _framePositionHint(faces.first, image);
+        _updateHint(petunjukPosisi);
+        if (petunjukPosisi != null) {
+          _consecutivePass = 0;
+          return;
+        }
         _evaluateAutoCapture(faces.first);
       }
     } catch (_) {
       // Abaikan error di 1 frame, biarkan dicoba lagi di frame berikutnya.
     }
+  }
+
+  /// [BARU] Perkiraan kecerahan frame kamera (0 = hitam, 255 = putih) dari
+  /// area tengah gambar saja, dengan sampel jarang supaya ringan di tiap
+  /// frame. Return null kalau frame tidak bisa dibaca (pengecekan dilewati).
+  double? _measureBrightness(CameraImage image) {
+    try {
+      final plane = image.planes.first;
+      final bytes = plane.bytes;
+      final w = image.width;
+      final h = image.height;
+      final rowStride = plane.bytesPerRow;
+      final isBgra = Platform.isIOS; // iOS: bgra8888, Android: nv21
+      final bytesPerPixel = isBgra ? 4 : 1;
+
+      double total = 0;
+      int count = 0;
+      for (int y = (h * 0.2).round(); y < (h * 0.8).round(); y += 8) {
+        for (int x = (w * 0.25).round(); x < (w * 0.75).round(); x += 8) {
+          final i = y * rowStride + x * bytesPerPixel;
+          if (i + bytesPerPixel > bytes.length) continue;
+          if (isBgra) {
+            // Urutan byte: B, G, R, A
+            total += 0.114 * bytes[i] + 0.587 * bytes[i + 1] + 0.299 * bytes[i + 2];
+          } else {
+            total += bytes[i]; // NV21: byte awal tiap piksel = Y (kecerahan)
+          }
+          count++;
+        }
+      }
+      if (count == 0) return null;
+      return total / count;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// [BARU] Cek posisi wajah terhadap bingkai oval di layar.
+  /// Return pesan petunjuk kalau wajah belum pas, atau null kalau sudah pas
+  /// (ukuran cukup besar, tidak terlalu dekat, dan berada di dalam bingkai).
+  /// Pengecekan dilewati (null) kalau ukuran layar belum diketahui.
+  String? _framePositionHint(Face face, CameraImage image) {
+    final area = _areaSize;
+    if (area == null || area.isEmpty) return null;
+
+    // ML Kit mengembalikan kotak wajah pada gambar yang sudah ditegakkan
+    // (portrait). Gambar dipetakan ke layar dengan BoxFit.cover, sama
+    // seperti di _buildCameraPreview.
+    final imgW = math.min(image.width, image.height).toDouble();
+    final imgH = math.max(image.width, image.height).toDouble();
+    final scale = math.max(area.width / imgW, area.height / imgH);
+    final offsetX = (area.width - imgW * scale) / 2;
+    final offsetY = (area.height - imgH * scale) / 2;
+
+    final box = face.boundingBox;
+    double left = box.left * scale + offsetX;
+    double right = box.right * scale + offsetX;
+    final top = box.top * scale + offsetY;
+    final bottom = box.bottom * scale + offsetY;
+
+    // Preview kamera depan tampil mirror, jadi posisi di layar dibalik.
+    if (_controller?.description.lensDirection == CameraLensDirection.front) {
+      final mirroredLeft = area.width - right;
+      right = area.width - left;
+      left = mirroredLeft;
+    }
+
+    final faceRect = Rect.fromLTRB(left, top, right, bottom);
+    final frameRect = Rect.fromCenter(
+      center: Offset(area.width / 2, area.height / 2),
+      width: _frameWidth,
+      height: _frameHeight,
+    );
+
+    if (faceRect.width < _frameWidth * _minFaceToFrame) {
+      return 'Wajah terlalu jauh, dekatkan wajah ke kamera';
+    }
+    if (faceRect.width > _frameWidth * _maxFaceToFrame ||
+        faceRect.height > _frameHeight * _maxFaceToFrame) {
+      return 'Wajah terlalu dekat, jauhkan sedikit';
+    }
+
+    final longgar = frameRect.inflate(_frameTolerance);
+    if (!longgar.contains(faceRect.topLeft) ||
+        !longgar.contains(faceRect.bottomRight)) {
+      return 'Posisikan wajah di tengah bingkai';
+    }
+
+    return null;
   }
 
   /// Konversi CameraImage (format nv21/bgra8888) jadi InputImage buat ML Kit.
@@ -469,6 +599,9 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
         final currentChallenge = _challenges[_currentStep];
         final framePassing = _consecutivePass > 0;
 
+        // [BARU] LayoutBuilder hanya untuk mengetahui ukuran area kamera.
+        return LayoutBuilder(builder: (context, constraints) {
+        _areaSize = Size(constraints.maxWidth, constraints.maxHeight);
         return Stack(
           fit: StackFit.expand,
           children: [
@@ -477,8 +610,8 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
             // sekilas saat gerakan mulai terdeteksi sesuai instruksi.
             Center(
               child: Container(
-                width: 240,
-                height: 300,
+                width: _frameWidth,
+                height: _frameHeight,
                 decoration: BoxDecoration(
                   border: Border.all(
                     color: framePassing ? AppColors.success : Colors.white70,
@@ -539,7 +672,8 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
                     Text(
                       _liveness
                           ? 'Verifikasi otomatis — ikuti instruksi di atas'
-                          : 'Tetap diam sebentar, foto diambil otomatis',
+                          : 'Pastikan wajah terkena cahaya dan hadap lurus ke kamera.\n'
+                              'Tetap diam sebentar, foto diambil otomatis',
                       style:
                           const TextStyle(color: Colors.white60, fontSize: 12),
                     ),
@@ -549,6 +683,7 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
             ),
           ],
         );
+        });
       },
     );
   }
