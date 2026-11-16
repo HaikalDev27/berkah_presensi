@@ -1,8 +1,13 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:image/image.dart' as img;
 
 import '../config/api_config.dart';
 import '../network/api_client.dart';
 import '../network/api_exception.dart';
+import '../models/face_kuota.dart';
 import 'face_embedding_service.dart';
 
 /// Hasil verifikasi wajah dari server.
@@ -10,12 +15,23 @@ class FaceVerificationResult {
   final bool match;
   final double score;
 
-  const FaceVerificationResult({required this.match, required this.score});
+  /// Status kuota percobaan — hanya terisi kalau verifikasi untuk Check-in.
+  final FaceKuota? kuota;
+
+  const FaceVerificationResult({
+    required this.match,
+    required this.score,
+    this.kuota,
+  });
 
   factory FaceVerificationResult.fromJson(Map<String, dynamic> json) {
+    final kuotaJson = json['kuota'];
     return FaceVerificationResult(
       match: json['match'] == true,
       score: (json['score'] as num?)?.toDouble() ?? 0,
+      kuota: kuotaJson is Map<String, dynamic>
+          ? FaceKuota.fromJson(kuotaJson)
+          : null,
     );
   }
 }
@@ -57,12 +73,22 @@ class FaceVerificationService {
   /// atau [ApiException] kalau request ke server gagal (termasuk kalau
   /// wajah referensi belum pernah didaftarkan — lihat pesan error dari
   /// backend, controllers/WajahController.php).
-  Future<FaceVerificationResult> verify(File foto) async {
+  ///
+  /// [untukCheckin] = true khusus untuk verifikasi saat Check-in: server
+  /// menghitung percobaan gagal (maks 3 per hari) dan membalas status
+  /// kuota di `FaceVerificationResult.kuota`. Check-out tidak memakainya.
+  Future<FaceVerificationResult> verify(
+    File foto, {
+    bool untukCheckin = false,
+  }) async {
     final embedding = await _embeddingService.extractEmbedding(foto);
 
     final response = await _apiClient.post(
       ApiConfig.verifyFace,
-      body: {'embedding': embedding},
+      body: {
+        'embedding': embedding,
+        if (untukCheckin) 'tujuan': 'checkin',
+      },
       useAuth: true,
     );
 
@@ -72,6 +98,50 @@ class FaceVerificationService {
     }
 
     return FaceVerificationResult.fromJson(data);
+  }
+
+  /// Status kuota percobaan verifikasi wajah Check-in hari ini.
+  Future<FaceKuota> getKuota() async {
+    final response = await _apiClient.get(ApiConfig.faceKuota, useAuth: true);
+    final data = response['data'];
+    if (data is! Map<String, dynamic>) {
+      throw ApiException('Response status kuota tidak valid');
+    }
+    return FaceKuota.fromJson(data);
+  }
+
+  /// Kirim foto bukti identitas ke admin (hanya bisa setelah kuota habis).
+  /// Foto diperkecil dulu kalau terlalu besar (batas server 2 MB).
+  Future<void> kirimBukti(File foto) async {
+    final bytes = await _siapkanFotoBukti(foto);
+
+    await _apiClient.post(
+      ApiConfig.faceBukti,
+      body: {'foto_base64': 'data:image/png;base64,${base64Encode(bytes)}'},
+      useAuth: true,
+    );
+  }
+
+  static const int _maksBytesBukti = 1500 * 1024;
+
+  /// Kalau file sudah kecil dikirim apa adanya. Kalau besar, diperkecil
+  /// bertahap sebagai PNG (lossless, warna tidak bergeser).
+  Future<List<int>> _siapkanFotoBukti(File foto) async {
+    final Uint8List asli = await foto.readAsBytes();
+    if (asli.length <= _maksBytesBukti) return asli;
+
+    final decoded = img.decodeImage(asli);
+    if (decoded == null) {
+      throw ApiException('Foto bukti tidak dapat diproses, silakan ulangi.');
+    }
+
+    img.Image gambar = decoded;
+    List<int> hasil = asli;
+    while (hasil.length > _maksBytesBukti && gambar.width > 320) {
+      gambar = img.copyResize(gambar, width: (gambar.width * 0.8).round());
+      hasil = img.encodePng(gambar);
+    }
+    return hasil;
   }
 
   /// Dipakai KHUSUS oleh alur "Lupa Password" — user BELUM login (tidak

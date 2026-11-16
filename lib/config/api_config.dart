@@ -34,6 +34,10 @@ class ApiConfig {
   static String get detail => '/absensi/detail';
   static String get batasWaktu => '/absensi/batas-waktu';
 
+  // Kuota verifikasi wajah saat Check-in + foto bukti identitas
+  static String get faceKuota => '/absensi/face-kuota';
+  static String get faceBukti => '/absensi/face-bukti';
+
   static String get lokasi => '/absensi/lokasi';
 
   // -------------------------------------------------------------------
