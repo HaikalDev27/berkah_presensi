@@ -836,7 +836,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
-                                          Text('Anda telah melakukan Check-in'),
+                                          Text('Anda telah melakukan absensi'),
                                           Text(
                                             'Status: ${today.statusLabel}',
                                             style: const TextStyle(
